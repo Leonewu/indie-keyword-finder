@@ -78,9 +78,23 @@ try {
   }
   await cdp.send("Browser.close");
 } finally {
-  child.kill("SIGTERM");
+  if (child.exitCode == null) {
+    child.kill("SIGTERM");
+    await Promise.race([
+      new Promise((resolve) => child.once("exit", resolve)),
+      new Promise((resolve) => setTimeout(resolve, 2_000)),
+    ]);
+  }
   await new Promise((resolve) => server.close(resolve));
-  await rm(profile, { recursive: true, force: true });
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await rm(profile, { recursive: true, force: true });
+      break;
+    } catch (error) {
+      if (attempt === 4) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
 }
 
 function createProjectServer() {
