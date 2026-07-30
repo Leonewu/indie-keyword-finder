@@ -21,6 +21,7 @@ import { ensureDefaults } from "./storage.js";
 const ANALYSIS_STORAGE_KEY = "analysisState";
 const MIN_BATCH_DELAY_MS = 4_000;
 const MAX_BATCH_DELAY_MS = 10_000;
+const LOG_PREFIX = "[Indie Keyword Finder]";
 
 let analysisPort = null;
 let session = null;
@@ -44,6 +45,10 @@ let semanticEngineState = {
   },
   error: null,
 };
+
+function logMining(event, details = {}) {
+  console.info(`${LOG_PREFIX} ${event}`, details);
+}
 
 function freshCapture() {
   return {
@@ -155,6 +160,11 @@ async function reportAnalysisError(error) {
   clearTimeout(batchTimeoutTimer);
   batchTimeoutTimer = null;
   const message = error instanceof Error ? error.message : String(error);
+  console.error(`${LOG_PREFIX} Discover failed`, {
+    message,
+    error,
+    batch: session?.currentBatch ?? [],
+  });
   session = failMiningSession(session, message);
   await persistSession();
   send({ type: "ANALYSIS_ERROR", error: message });
@@ -181,6 +191,12 @@ async function completeAnalysis() {
   if (!session) return;
   session = setMiningStatus(session, "complete");
   await persistSession();
+  logMining("Discover complete", {
+    processed: session.processed ?? 0,
+    batches: session.batchesProcessed ?? 0,
+    relatedKeywords: session.relatedKeywords?.length ?? 0,
+    qualifiedKeywords: session.effectiveKeywords?.length ?? 0,
+  });
   send({ type: "ANALYSIS_COMPLETE", analysis: publicMiningSession(session) });
   sendSnapshot();
 }
@@ -201,6 +217,12 @@ async function runNextBatch() {
     [session.referenceKeyword, ...selected.batch],
     { timeRange: session.timeRange, country: session.country },
   );
+  logMining("Opening Google Trends batch", {
+    batch: selected.batch,
+    referenceKeyword: session.referenceKeyword,
+    depth: session.currentDepth,
+    url,
+  });
   const tab = await resolveTrendsTab(url);
   if (!tab?.id) throw new Error("Unable to open a Google Trends tab.");
   activeTrendsTabId = tab.id;
@@ -222,6 +244,10 @@ function scheduleNextBatch() {
     MIN_BATCH_DELAY_MS +
       Math.random() * (MAX_BATCH_DELAY_MS - MIN_BATCH_DELAY_MS),
   );
+  logMining("Next batch scheduled", {
+    delayMs: delay,
+    queued: session.queue?.length ?? 0,
+  });
   send({ type: "NEXT_BATCH_TIME", seconds: Math.ceil(delay / 1_000) });
 
   clearTimeout(nextBatchTimer);
@@ -248,6 +274,11 @@ async function processCapturedBatch() {
     ],
     { limitPerPayload: session.maxRelatedPerKeyword },
   );
+  logMining("Google Trends batch captured", {
+    batch: session.currentBatch,
+    relatedCandidates: rawRelated.length,
+    relatedRequests: captured.relatedByRequest.size,
+  });
   session = {
     ...session,
     semanticStatus: "analyzing",
@@ -258,6 +289,12 @@ async function processCapturedBatch() {
   const semantic = await filterRelatedBySemantics({
     seedKeywords: session.rootKeywords,
     candidates: rawRelated,
+    threshold: session.semanticThreshold,
+  });
+  logMining("Semantic filter complete", {
+    accepted: semantic.accepted.length,
+    rejected: semantic.rejected.length,
+    status: semantic.status,
     threshold: session.semanticThreshold,
   });
   session = {
@@ -282,6 +319,12 @@ async function processCapturedBatch() {
   });
   session = observed.session;
   await persistSession();
+  logMining("Batch processed", {
+    addedRelated: observed.addedRelated,
+    addedQualified: observed.addedEffective,
+    processed: session.processed ?? 0,
+    queued: session.queue?.length ?? 0,
+  });
 
   send({
     type: "ANALYSIS_UPDATE",
@@ -310,6 +353,15 @@ async function startAnalysis(message) {
         : "Wait for the local semantic model to finish loading before Discover.",
     );
   }
+  logMining("Discover started", {
+    seedKeywords: message.keywords,
+    country: message.country,
+    timeRange: message.timeRange,
+    maxDepth: message.maxDepth,
+    maxKeywords: message.maxKeywords,
+    signalThreshold: message.threshold,
+    semanticThreshold: message.semanticThreshold,
+  });
   clearTimeout(nextBatchTimer);
   clearTimeout(batchTimeoutTimer);
   nextBatchTimer = null;
