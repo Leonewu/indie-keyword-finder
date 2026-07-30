@@ -13,12 +13,16 @@ probability, traffic, or revenue.
 
 - **Mining first:** start with a seed, expand related queries, and collect
   candidates that satisfy a transparent relative-signal rule.
+- **On-device topic filtering:** a packaged sentence-embedding model removes
+  semantically unrelated branches before recursive expansion, without an API
+  key or per-query fee.
 - **Supporting research tools:** keyword lists, favorites, root sequences,
   batch Google Trends comparisons, and small inline actions on Trends pages.
 - **Local-first storage:** keywords, settings, and Mining sessions stay in
   Chrome local storage.
-- **Companion Skill:** run the same deterministic Mining model from
-  `.agents/skills/indie-keyword-finder` without installing the Extension.
+- **Companion Skill:** run the same deterministic Mining state model from
+  `.agents/skills/indie-keyword-finder` without installing the Extension, with
+  an explicit semantic-review field for recursive expansion.
 - **English and Chinese UI:** switch languages from Settings.
 
 ## How Mining works
@@ -27,7 +31,10 @@ The first request contains only the seed so Google Trends can return its related
 queries. Later batches reuse that seed as the visible reference and compare up
 to four candidates at a time—there is no unrelated hidden default term. Mining
 keeps at most five rising queries per processed keyword and defaults to two
-recursive generations to limit topic drift.
+recursive generations. Before a related query enters the next generation, the
+Extension compares its local sentence embedding with the seed and rejects
+off-topic branches below the pinned similarity threshold. If the packaged model
+cannot initialize, Mining falls back to a strict shared-topic-token rule.
 
 A candidate qualifies when its recent average is materially above its early
 baseline, its latest point still shows meaningful growth, and its latest value
@@ -35,6 +42,10 @@ reaches the configured percentage of the seed reference. An optional reference
 override can be supplied by the Companion Skill. Neither mode estimates
 absolute volume. Every result still needs separate validation for intent,
 current search results, competition, seasonality, and business value.
+
+The semantic model, runtime, and WebAssembly engine are included in the release
+ZIP. Keyword text and embeddings remain on the device; no Indie Keyword Finder
+API or model service is contacted.
 
 ## Install the Extension locally
 
@@ -73,7 +84,9 @@ in the United States over the past 30 days.
 
 The Skill can be copied and installed independently. Its generated runner is
 self-contained; `npm run check` verifies that it still matches the shared
-Mining Core.
+Mining Core. Unlike the Extension, the Skill ZIP does not bundle the 45 MB
+browser inference runtime and model. Its workflow supplies an explicitly
+reviewed `allowedRelatedKeywords` subset before each recursive transition.
 
 ## Development
 

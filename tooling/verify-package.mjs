@@ -36,10 +36,23 @@ const allowedExtensionEntries = [
   "icons/icon48.png",
   "manifest.json",
   "mining-core.js",
+  "models/Xenova/all-MiniLM-L6-v2/config.json",
+  "models/Xenova/all-MiniLM-L6-v2/onnx/model_quantized.onnx",
+  "models/Xenova/all-MiniLM-L6-v2/tokenizer.json",
+  "models/Xenova/all-MiniLM-L6-v2/tokenizer_config.json",
+  "semantic-core.js",
+  "semantic-engine.js",
   "sidebar.css",
   "sidebar.html",
   "sidebar.js",
   "storage.js",
+  "third-party/Hugging-Face-Jinja-MIT.txt",
+  "third-party/NOTICES.md",
+  "third-party/ONNX-Runtime-MIT.txt",
+  "third-party/Transformers.js-Apache-2.0.txt",
+  "vendor/ort-wasm-simd-threaded.jsep.mjs",
+  "vendor/ort-wasm-simd-threaded.jsep.wasm",
+  "vendor/transformers.min.js",
 ].sort();
 if (
   JSON.stringify(extensionEntries) !==

@@ -43,26 +43,31 @@ difficulty, traffic forecasts, or guaranteed ranking opportunities.
 3. Open `nextUrl` with an available browser-control tool. Use structured network
    inspection to capture the Google Trends `multiline` response and the
    candidate `relatedsearches` query responses. Keep the batch order unchanged.
-4. Save a temporary observation object outside the Skill directory:
+4. Review the captured related queries for semantic relevance to the seed.
+   Put only the relevant queries in `allowedRelatedKeywords`. The Extension does
+   this with its packaged local embedding model; the Companion Skill uses your
+   explicit reviewed subset so it does not silently expand off-topic branches.
+5. Save a temporary observation object outside the Skill directory:
 
    ```json
    {
      "session": {},
      "timelineData": [],
-     "relatedPayloads": []
+     "relatedPayloads": [],
+     "allowedRelatedKeywords": ["relevant query"]
    }
    ```
 
-5. Advance the same session:
+6. Advance the same session:
 
    ```bash
    node scripts/mine.mjs advance --input /absolute/path/observation.json
    ```
 
-6. Repeat with each returned `nextUrl` until `complete` is true, the requested
+7. Repeat with each returned `nextUrl` until `complete` is true, the requested
    cap is reached, the user stops, or Google Trends returns an actionable
    failure.
-7. Return a deduplicated list of `session.effectiveKeywords`, the scope and
+8. Return a deduplicated list of `session.effectiveKeywords`, the scope and
    threshold, and a short caveat that every candidate still needs independent
    intent, competition, and business-value validation.
 

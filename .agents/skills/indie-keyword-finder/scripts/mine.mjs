@@ -95,7 +95,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   maxDepth: 2,
   maxKeywords: 200,
   maxRelatedPerKeyword: 5,
-  settingsSchemaVersion: 3,
+  semanticThreshold: 0.32,
+  settingsSchemaVersion: 4,
   threshold: 20,
 });
 
@@ -310,6 +311,8 @@ export function createMiningSession(
     maxDepth = DEFAULT_SETTINGS.maxDepth,
     maxKeywords = DEFAULT_SETTINGS.maxKeywords,
     maxRelatedPerKeyword = DEFAULT_SETTINGS.maxRelatedPerKeyword,
+    semanticMode = "off",
+    semanticThreshold = DEFAULT_SETTINGS.semanticThreshold,
     threshold = DEFAULT_SETTINGS.threshold,
   },
   now = Date.now(),
@@ -328,13 +331,16 @@ export function createMiningSession(
     rootKeywords.map((keyword) => [keyword.toLocaleLowerCase(), 0]),
   );
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     status: "running",
     rootKeywords,
     queue: [...rootKeywords],
     keywordDepths,
     relatedKeywords: [],
     effectiveKeywords: [],
+    semanticRelevantKeywords: [],
+    semanticRejectedKeywords: [],
+    semanticScores: {},
     batchesProcessed: 0,
     deepestProcessed: 0,
     processed: 0,
@@ -346,6 +352,15 @@ export function createMiningSession(
       1,
       25,
     ),
+    semanticMode: semanticMode === "local" ? "local" : "off",
+    semanticStatus: semanticMode === "local" ? "waiting" : "off",
+    semanticThreshold: boundedNumber(
+      semanticThreshold,
+      DEFAULT_SETTINGS.semanticThreshold,
+      0,
+      1,
+    ),
+    semanticError: null,
     threshold: boundedNumber(threshold, 20, 1, 10_000),
     timeRange: DATE_OPTIONS[timeRange] === undefined ? "Past 7 Days" : timeRange,
     country: GEO_OPTIONS[country] === undefined ? "Global" : country,
@@ -364,11 +379,22 @@ export function createMiningSession(
 export function publicMiningSession(session, now = Date.now()) {
   if (!session) return null;
   return {
-    schemaVersion: session.schemaVersion ?? 2,
+    schemaVersion: session.schemaVersion ?? 3,
     status: session.status,
     rootKeywords: [...(session.rootKeywords ?? [])],
     relatedKeywords: [...(session.relatedKeywords ?? [])],
     effectiveKeywords: [...(session.effectiveKeywords ?? [])],
+    semanticRelevant:
+      session.semanticRelevantKeywords?.length ?? 0,
+    semanticRejected:
+      session.semanticRejectedKeywords?.length ?? 0,
+    semanticScores: { ...(session.semanticScores ?? {}) },
+    semanticMode: session.semanticMode ?? "off",
+    semanticStatus: session.semanticStatus ?? "off",
+    semanticThreshold:
+      Number(session.semanticThreshold) ||
+      DEFAULT_SETTINGS.semanticThreshold,
+    semanticError: session.semanticError ?? null,
     batchesProcessed: Number(session.batchesProcessed) || 0,
     deepestProcessed: Number(session.deepestProcessed) || 0,
     processed: Number(session.processed) || 0,
@@ -382,6 +408,7 @@ export function publicMiningSession(session, now = Date.now()) {
     referenceMode: session.referenceMode,
     currentBatch: [...(session.currentBatch ?? [])],
     currentDepth:
+      session.currentDepth != null &&
       Number.isFinite(Number(session.currentDepth))
         ? Number(session.currentDepth)
         : null,
@@ -448,7 +475,12 @@ export function selectNextMiningBatch(session, now = Date.now()) {
 
 export function applyMiningObservation(
   session,
-  { timelineData, relatedPayloads = [] },
+  {
+    timelineData,
+    relatedPayloads = [],
+    allowedRelatedKeywords,
+    semanticScores = {},
+  },
   now = Date.now(),
 ) {
   if (!session?.batchInFlight || session.currentBatch.length === 0) {
@@ -494,6 +526,32 @@ export function applyMiningObservation(
     ...session.relatedKeywords,
     ...related,
   ]);
+  const allowedRelatedSet = Array.isArray(allowedRelatedKeywords)
+    ? new Set(
+        allowedRelatedKeywords.map((keyword) =>
+          String(keyword).toLocaleLowerCase(),
+        ),
+      )
+    : null;
+  const relevantRelated = allowedRelatedSet
+    ? related.filter((keyword) =>
+        allowedRelatedSet.has(keyword.toLocaleLowerCase()),
+      )
+    : related;
+  const rejectedRelated = allowedRelatedSet
+    ? related.filter(
+        (keyword) =>
+          !allowedRelatedSet.has(keyword.toLocaleLowerCase()),
+      )
+    : [];
+  const semanticRelevantKeywords = uniqueKeywords([
+    ...(session.semanticRelevantKeywords ?? []),
+    ...relevantRelated,
+  ]);
+  const semanticRejectedKeywords = uniqueKeywords([
+    ...(session.semanticRejectedKeywords ?? []),
+    ...rejectedRelated,
+  ]);
 
   const queued = new Set(
     [
@@ -507,7 +565,7 @@ export function applyMiningObservation(
   const currentDepth = Number(session.currentDepth) || 0;
   const nextDepth = currentDepth + 1;
   const canExpand = currentDepth < session.maxDepth;
-  for (const keyword of related) {
+  for (const keyword of relevantRelated) {
     const key = keyword.toLocaleLowerCase();
     if (queued.has(key)) continue;
     queued.add(key);
@@ -525,6 +583,12 @@ export function applyMiningObservation(
       keywordDepths,
       relatedKeywords,
       effectiveKeywords,
+      semanticRelevantKeywords,
+      semanticRejectedKeywords,
+      semanticScores: {
+        ...(session.semanticScores ?? {}),
+        ...semanticScores,
+      },
       batchesProcessed: (Number(session.batchesProcessed) || 0) + 1,
       deepestProcessed: Math.max(
         Number(session.deepestProcessed) || 0,
@@ -538,6 +602,8 @@ export function applyMiningObservation(
       lastError: null,
     },
     addedRelated: related,
+    addedRelevant: relevantRelated,
+    rejectedSemantic: rejectedRelated,
     addedEffective: effective,
     complete,
   };
@@ -596,7 +662,7 @@ export function restoreMiningSession(saved, now = Date.now()) {
   }
   return {
     ...saved,
-    schemaVersion: 2,
+    schemaVersion: 3,
     status: "paused",
     rootKeywords,
     queue: restoredQueue,
@@ -610,6 +676,25 @@ export function restoreMiningSession(saved, now = Date.now()) {
       1,
       25,
     ),
+    semanticRelevantKeywords: uniqueKeywords(
+      saved.semanticRelevantKeywords ?? [],
+    ),
+    semanticRejectedKeywords: uniqueKeywords(
+      saved.semanticRejectedKeywords ?? [],
+    ),
+    semanticScores: { ...(saved.semanticScores ?? {}) },
+    semanticMode: saved.semanticMode === "local" ? "local" : "off",
+    semanticStatus:
+      saved.semanticMode === "local"
+        ? "waiting"
+        : "off",
+    semanticThreshold: boundedNumber(
+      saved.semanticThreshold,
+      DEFAULT_SETTINGS.semanticThreshold,
+      0,
+      1,
+    ),
+    semanticError: null,
     comparisonKeyword: comparison,
     referenceKeyword,
     referenceMode:
@@ -646,10 +731,14 @@ switch (command) {
     const observed = applyMiningObservation(input.session, {
       timelineData: input.timelineData,
       relatedPayloads: input.relatedPayloads ?? [],
+      allowedRelatedKeywords: input.allowedRelatedKeywords,
+      semanticScores: input.semanticScores ?? {},
     });
     print({
       ...advanceSession(observed.session),
       addedRelated: observed.addedRelated,
+      addedRelevant: observed.addedRelevant,
+      rejectedSemantic: observed.rejectedSemantic,
       addedEffective: observed.addedEffective,
     });
     break;

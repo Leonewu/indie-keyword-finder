@@ -10,6 +10,7 @@ import {
   detectEffectiveKeywords,
   extractRelatedKeywords,
   normalizeKeywordInput,
+  publicMiningSession,
   restoreMiningSession,
   selectNextMiningBatch,
   setMiningStatus,
@@ -195,6 +196,60 @@ test("limits expansion candidates per related-query payload", () => {
     extractRelatedKeywords([payload], [], { limitPerPayload: 2 }),
     ["one", "two"],
   );
+});
+
+test("only enqueues related queries accepted by the semantic filter", () => {
+  const created = createMiningSession({
+    keywords: ["itinerary generator"],
+    maxDepth: 2,
+    semanticMode: "local",
+  });
+  const selected = selectNextMiningBatch(created);
+  const relatedPayloads = [
+    {
+      default: {
+        rankedList: [
+          { rankedKeyword: [] },
+          {
+            rankedKeyword: [
+              { query: "travel itinerary template" },
+              { query: "docker containerization" },
+            ],
+          },
+        ],
+      },
+    },
+  ];
+  const observed = applyMiningObservation(selected.session, {
+    timelineData: Array.from({ length: 10 }, () => ({ value: [10] })),
+    relatedPayloads,
+    allowedRelatedKeywords: ["travel itinerary template"],
+    semanticScores: {
+      "travel itinerary template": 0.63,
+      "docker containerization": 0.08,
+    },
+  });
+
+  assert.deepEqual(observed.session.relatedKeywords, [
+    "travel itinerary template",
+    "docker containerization",
+  ]);
+  assert.deepEqual(observed.session.queue, [
+    "travel itinerary template",
+  ]);
+  assert.deepEqual(observed.addedRelevant, [
+    "travel itinerary template",
+  ]);
+  assert.deepEqual(observed.rejectedSemantic, [
+    "docker containerization",
+  ]);
+  assert.equal(observed.session.semanticRejectedKeywords.length, 1);
+});
+
+test("preserves a null current depth in the public session", () => {
+  const session = createMiningSession({ keywords: ["seed"] });
+
+  assert.equal(publicMiningSession(session).currentDepth, null);
 });
 
 test("anchors later batches to the seed and limits breadth", () => {

@@ -74,7 +74,8 @@ Pass this object to `scripts/mine.mjs advance`:
         ]
       }
     }
-  ]
+  ],
+  "allowedRelatedKeywords": ["next query"]
 }
 ```
 
@@ -85,6 +86,14 @@ object above only illustrates the fields relevant to an observation.
 response. `relatedPayloads` contains the complete parsed payload for each
 candidate-query `relatedsearches` response. Prefer the rising ranked list; the
 runner falls back to the top list when rising is empty.
+
+`allowedRelatedKeywords` is an optional reviewed subset of the related queries.
+When present, only that subset enters the recursive queue; excluded queries
+remain in the related-query count for transparency. The Chrome Extension
+creates this subset with its packaged on-device embedding model. The Companion
+Skill should provide the subset after explicit semantic review. When the field
+is omitted, the deterministic runner preserves its legacy behavior and queues
+all valid extracted queries.
 
 ## Browser acquisition notes
 

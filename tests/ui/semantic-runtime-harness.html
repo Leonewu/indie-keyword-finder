@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Semantic runtime harness</title>
+  </head>
+  <body>
+    <pre id="semantic-result"></pre>
+    <pre id="semantic-error"></pre>
+    <script type="module">
+      const storage = {};
+      globalThis.chrome = {
+        runtime: {
+          getURL(path) {
+            return new URL(`/dist/chrome-extension/${path}`, location.origin)
+              .href;
+          },
+        },
+        storage: {
+          local: {
+            async get(key) {
+              return { [key]: storage[key] };
+            },
+            async set(patch) {
+              Object.assign(storage, patch);
+            },
+          },
+        },
+      };
+
+      try {
+        const engine = await import(
+          "/dist/chrome-extension/semantic-engine.js"
+        );
+        const result = await engine.filterRelatedBySemantics({
+          seedKeywords: ["itinerary generator"],
+          candidates: [
+            "travel itinerary template",
+            "agile methodology",
+            "javascript libraries",
+            "node.js backend",
+            "docker containerization",
+            "kubernetes orchestration",
+          ],
+          threshold: 0.32,
+        });
+        document.querySelector("#semantic-result").textContent =
+          JSON.stringify(result);
+      } catch (error) {
+        document.querySelector("#semantic-error").textContent =
+          error?.stack ?? String(error);
+      } finally {
+        document.documentElement.dataset.semanticComplete = "true";
+      }
+    </script>
+  </body>
+</html>

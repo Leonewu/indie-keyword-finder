@@ -10,8 +10,9 @@ Side Panel after the user opens the Extension.
 ### storage
 
 Stores user-created keyword lists, favorites, settings, language, cursor
-position, and recoverable Mining session state locally in Chrome. The Settings
-screen provides a clear-all-data action.
+position, recoverable Mining session state, and a bounded cache of sentence
+embeddings locally in Chrome. The Settings screen provides a clear-all-data
+action.
 
 ### webRequest
 
@@ -28,7 +29,9 @@ requested.
 
 ## Remote code
 
-No. All executable JavaScript is packaged in the Manifest V3 Extension ZIP.
+No. All executable JavaScript and WebAssembly are packaged in the Manifest V3
+Extension ZIP. The packaged ONNX model contains data weights, not remotely
+hosted executable code.
 
 ## Data disclosure
 
@@ -36,6 +39,8 @@ The Extension handles website content, browsing activity related to Google
 Trends, and user-generated keyword lists. Processing and persistence occur
 locally, except for the Google Trends requests required to provide the
 user-requested research and destinations the user explicitly chooses to open.
+The Extension performs semantic relevance scoring on the device and does not
+send keywords to an AI or embedding provider.
 
 ## Limited Use certification
 

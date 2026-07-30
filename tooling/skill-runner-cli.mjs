@@ -23,10 +23,14 @@ switch (command) {
     const observed = applyMiningObservation(input.session, {
       timelineData: input.timelineData,
       relatedPayloads: input.relatedPayloads ?? [],
+      allowedRelatedKeywords: input.allowedRelatedKeywords,
+      semanticScores: input.semanticScores ?? {},
     });
     print({
       ...advanceSession(observed.session),
       addedRelated: observed.addedRelated,
+      addedRelevant: observed.addedRelevant,
+      rejectedSemantic: observed.rejectedSemantic,
       addedEffective: observed.addedEffective,
     });
     break;

@@ -57,6 +57,12 @@
       const onlySeedSubmitted =
         JSON.stringify(startMessage?.keywords) === JSON.stringify(["ai agent"]);
       const boundedDepthSubmitted = startMessage?.maxDepth === 2;
+      const semanticThresholdSubmitted =
+        startMessage?.semanticThreshold === 0.32;
+      const semanticStatusShown =
+        document.querySelector(".semantic-status")?.textContent.includes(
+          "9 off-topic related queries removed",
+        ) === true;
       const appWidth = document.querySelector("#app").getBoundingClientRect().width;
       const centeredPrototypeWidth = appWidth >= 380 && appWidth <= 400;
 
@@ -67,6 +73,8 @@
         focusPreserved,
         onlySeedSubmitted,
         referenceOmitted,
+        semanticStatusShown,
+        semanticThresholdSubmitted,
       };
       for (const [name, value] of Object.entries(result)) {
         document.documentElement.dataset[name] = String(value);

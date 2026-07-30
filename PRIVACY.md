@@ -13,6 +13,7 @@ The Extension may handle:
 - favorites, history, root sequences, settings, language, and cursor position;
 - Mining session state, including queued, related, processed, and qualified
   keywords;
+- local sentence embeddings used to compare related queries with the seed;
 - Google Trends request URLs and response data required to evaluate the
   user-started Mining session;
 - the Google Trends page content needed to place user-invoked inline tools.
@@ -34,6 +35,10 @@ Keywords, settings, and Mining sessions are stored in
 `chrome.storage.local`. Indie Keyword Finder does not operate a backend,
 account database, analytics service, advertising service, or telemetry
 collector.
+
+Topic relevance is calculated on the user's device with a model and
+WebAssembly runtime packaged inside the Extension. Seed keywords, candidate
+keywords, and their embeddings are not sent to a model provider.
 
 ## Third-party processing
 

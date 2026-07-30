@@ -27,6 +27,7 @@ What it does:
 
 - starts Mining from one seed keyword;
 - expands related queries recursively;
+- removes off-topic branches with a packaged on-device semantic model;
 - applies a transparent relative-signal rule;
 - keeps keywords, settings, and results in Chrome local storage;
 - offers English and Chinese interfaces;
@@ -37,6 +38,7 @@ What it does not do:
 - estimate exact monthly search volume;
 - promise ranking improvement, traffic, or revenue;
 - send research data to an Indie Keyword Finder backend;
+- send keywords to an AI or embedding API;
 - collect telemetry or serve advertising.
 
 Google Trends is the external data source used for user-requested research.

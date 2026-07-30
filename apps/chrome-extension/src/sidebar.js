@@ -58,6 +58,12 @@ const copy = {
     ready: "Ready",
     relativeSignal: "Relative signal met",
     resultContext: "Worth validating in your SEO workflow",
+    topicMatch: "{score}% topic match",
+    semanticReady: "On-device semantic filter",
+    semanticAnalyzing: "Checking topic relevance on this device…",
+    semanticFallback:
+      "Semantic model unavailable · strict keyword fallback active",
+    semanticRemoved: "{count} off-topic related queries removed",
     queued: "Queued",
     clearData: "Clear all local data",
     clearDataHelp: "Remove saved keywords, settings, and Mining sessions from this browser.",
@@ -148,6 +154,11 @@ const copy = {
     ready: "就绪",
     relativeSignal: "达到相对信号阈值",
     resultContext: "建议放入 SEO 工作流继续验证",
+    topicMatch: "主题匹配度 {score}%",
+    semanticReady: "本地语义筛选",
+    semanticAnalyzing: "正在本机判断主题相关性…",
+    semanticFallback: "语义模型不可用 · 已启用严格关键词回退",
+    semanticRemoved: "已过滤 {count} 个偏题相关查询",
     queued: "待分析",
     clearData: "清除全部本地数据",
     clearDataHelp: "删除这个浏览器中的关键词、设置和挖掘记录。",
@@ -561,6 +572,18 @@ function renderAnalysisStats() {
   }
   const status = analysis.status;
   const running = ["running", "paused"].includes(analysis.status);
+  const semanticLabel =
+    analysis.semanticStatus === "analyzing"
+      ? t("semanticAnalyzing")
+      : analysis.semanticStatus === "fallback"
+        ? t("semanticFallback")
+        : t("semanticReady");
+  const semanticRemoved =
+    analysis.semanticRejected > 0
+      ? ` · ${t("semanticRemoved", {
+          count: analysis.semanticRejected,
+        })}`
+      : "";
   return `
     <section class="centered-results">
       <header class="results-summary">
@@ -579,6 +602,11 @@ function renderAnalysisStats() {
           maxDepth: analysis.maxDepth ?? 0,
         })}</small>
       </header>
+      ${
+        analysis.semanticMode === "local"
+          ? `<div class="semantic-status semantic-status--${analysis.semanticStatus ?? "waiting"}"><span></span><strong>${semanticLabel}</strong>${semanticRemoved}</div>`
+          : ""
+      }
       ${
         running && state.nextSeconds != null
           ? `<div class="analysis-timer"><span class="pulse"></span>${t("nextBatch", { seconds: state.nextSeconds, processed: analysis.processed ?? 0 })}</div>`
@@ -601,7 +629,25 @@ function renderAnalysisStats() {
                 <span class="mining-result__index">${String(index + 1).padStart(2, "0")}</span>
                 <button data-action="copy-result" data-keyword="${escapeHtml(keyword)}">
                   <strong>${escapeHtml(keyword)}</strong>
-                  <small>${t("resultContext")}</small>
+                  <small>${t("resultContext")}${
+                    Number.isFinite(
+                      Number(
+                        analysis.semanticScores?.[
+                          keyword.toLocaleLowerCase()
+                        ],
+                      ),
+                    )
+                      ? ` · ${t("topicMatch", {
+                          score: Math.round(
+                            Number(
+                              analysis.semanticScores[
+                                keyword.toLocaleLowerCase()
+                              ],
+                            ) * 100,
+                          ),
+                        })}`
+                      : ""
+                  }</small>
                 </button>
                 <span class="mining-result__signal">${t("relativeSignal")}</span>
                 <button class="row-action" data-action="favorite-result" data-keyword="${escapeHtml(keyword)}" title="${t("favorite")}">${icon("star")}</button>
@@ -1049,6 +1095,9 @@ async function handleClick(event) {
         maxKeywords: state.settings.maxKeywords ?? 200,
         maxRelatedPerKeyword:
           state.settings.maxRelatedPerKeyword ?? 5,
+        semanticThreshold:
+          state.settings.semanticThreshold ??
+          DEFAULT_SETTINGS.semanticThreshold,
         threshold: state.settings.threshold ?? 20,
       });
       toast(t("analysisStarted"));

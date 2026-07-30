@@ -2,6 +2,7 @@ import {
   applyMiningObservation,
   buildTrendsUrl,
   createMiningSession,
+  extractRelatedKeywords,
   failMiningSession,
   publicMiningSession,
   restoreMiningSession,
@@ -9,6 +10,7 @@ import {
   setMiningStatus,
   stripGoogleJsonPrefix,
 } from "./mining-core.js";
+import { filterRelatedBySemantics } from "./semantic-engine.js";
 import { ensureDefaults } from "./storage.js";
 
 const ANALYSIS_STORAGE_KEY = "analysisState";
@@ -148,9 +150,38 @@ async function processCapturedBatch() {
   captured.processing = true;
   clearTimeout(batchTimeoutTimer);
   batchTimeoutTimer = null;
+  const relatedPayloads = [...captured.relatedByRequest.values()];
+  const rawRelated = extractRelatedKeywords(
+    relatedPayloads,
+    [
+      session.referenceKeyword,
+      ...session.rootKeywords,
+      ...session.relatedKeywords,
+    ],
+    { limitPerPayload: session.maxRelatedPerKeyword },
+  );
+  session = {
+    ...session,
+    semanticStatus: "analyzing",
+    semanticError: null,
+  };
+  await persistSession();
+  sendSnapshot();
+  const semantic = await filterRelatedBySemantics({
+    seedKeywords: session.rootKeywords,
+    candidates: rawRelated,
+    threshold: session.semanticThreshold,
+  });
+  session = {
+    ...session,
+    semanticStatus: semantic.status,
+    semanticError: semantic.error,
+  };
   const observed = applyMiningObservation(session, {
     timelineData: captured.timeline,
-    relatedPayloads: [...captured.relatedByRequest.values()],
+    relatedPayloads,
+    allowedRelatedKeywords: semantic.accepted,
+    semanticScores: semantic.scores,
   });
   session = observed.session;
   await persistSession();
@@ -184,6 +215,8 @@ async function startAnalysis(message) {
     maxKeywords: message.maxKeywords,
     maxDepth: message.maxDepth,
     maxRelatedPerKeyword: message.maxRelatedPerKeyword,
+    semanticMode: "local",
+    semanticThreshold: message.semanticThreshold,
     threshold: message.threshold,
   });
   activeTrendsTabId = null;

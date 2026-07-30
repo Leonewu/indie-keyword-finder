@@ -10,6 +10,7 @@
   --accent: #4a82d8;
   --accent-dark: #285ea9;
   --danger: #b24a3b;
+  --warning: #a66718;
   --success: #27745b;
   --line: rgb(17 25 32 / 12%);
   --line-strong: rgb(17 25 32 / 22%);
@@ -426,6 +427,36 @@ textarea:focus-visible {
   gap: 6px;
   margin: 0 0 10px;
   padding: 7px 9px;
+}
+
+.semantic-status {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 8px;
+  gap: 6px;
+  margin: -3px 0 10px;
+}
+
+.semantic-status span {
+  background: var(--accent);
+  border-radius: 50%;
+  height: 5px;
+  width: 5px;
+}
+
+.semantic-status strong {
+  color: var(--accent-dark);
+  font-weight: 500;
+}
+
+.semantic-status--analyzing span,
+.semantic-status--waiting span {
+  animation: breathe 1.4s ease-in-out infinite;
+}
+
+.semantic-status--fallback span {
+  background: var(--warning);
 }
 
 .pulse {
