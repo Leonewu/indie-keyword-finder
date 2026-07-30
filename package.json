@@ -1,0 +1,20 @@
+{
+  "name": "indie-keyword-finder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Discover rising search queries from one seed keyword.",
+  "scripts": {
+    "build": "node tooling/build.mjs",
+    "check": "node tooling/check.mjs",
+    "generate:skill": "node tooling/generate-skill-runner.mjs",
+    "package": "node tooling/package.mjs",
+    "test": "node --test",
+    "verify": "npm run check && npm test && node tooling/verify-package.mjs",
+    "prototype:interface": "node prototypes/prototype-identity-server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0"
+}

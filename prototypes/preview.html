@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Indie Keyword Finder Preview</title>
+    <link rel="stylesheet" href="sidebar.css" />
+    <style>
+      html {
+        background: #d8dcda;
+        display: grid;
+        place-items: center;
+      }
+      body {
+        border: 1px solid #adb7b4;
+        box-shadow: 0 30px 80px rgb(25 42 56 / 22%);
+        height: 760px;
+        width: 390px;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="app" aria-live="polite"></main>
+    <div id="toast-region" class="toast-region" aria-live="assertive"></div>
+    <script src="preview-mock.js"></script>
+    <script type="module">
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("prototype") === "interface") {
+        document.documentElement.classList.add("interface-prototype-page");
+        const stylesheet = document.createElement("link");
+        stylesheet.rel = "stylesheet";
+        stylesheet.href = "prototype-interface.css";
+        document.head.append(stylesheet);
+        await import("./prototype-interface.js");
+      } else {
+        await import("./sidebar.js");
+      }
+    </script>
+  </body>
+</html>

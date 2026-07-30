@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>PROTOTYPE — Product identity directions</title>
+    <link rel="stylesheet" href="prototype-identity.css" />
+  </head>
+  <body>
+    <!-- Four identity directions for the Mining-first extension, switchable via ?variant=. -->
+    <main class="prototype-stage">
+      <section id="prototype-root" class="extension-frame" aria-live="polite"></section>
+      <aside id="identity-notes" class="identity-notes" aria-live="polite"></aside>
+    </main>
+
+    <nav class="prototype-switcher" aria-label="原型方向切换">
+      <button id="previous-variant" type="button" aria-label="上一个方向">←</button>
+      <span id="variant-label"></span>
+      <button id="next-variant" type="button" aria-label="下一个方向">→</button>
+    </nav>
+
+    <script type="module" src="prototype-identity.js"></script>
+  </body>
+</html>

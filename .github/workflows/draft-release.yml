@@ -1,0 +1,35 @@
+name: Draft release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag, for example v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm run verify
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: >-
+          gh release create "$RELEASE_TAG"
+          dist/release/indie-keyword-finder-*.zip
+          dist/release/SHA256SUMS
+          --draft
+          --generate-notes
+          --verify-tag

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Indie Keyword Finder"
+  short_description: "Discover rising queries from Google Trends signals"
+  default_prompt: "Use $indie-keyword-finder to discover rising query opportunities from a seed keyword."

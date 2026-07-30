@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Indie Keyword Finder — Runtime Preview</title>
+    <link rel="stylesheet" href="/dist/chrome-extension/sidebar.css" />
+    <style>
+      html {
+        background: #cbd8e0;
+        display: grid;
+        min-height: 100%;
+        place-items: center;
+      }
+
+      body {
+        border: 1px solid rgb(17 25 32 / 18%);
+        box-shadow: 0 30px 80px rgb(25 42 56 / 22%);
+        height: min(780px, 100vh);
+        width: min(420px, 100vw);
+      }
+    </style>
+  </head>
+  <body>
+    <main id="app" aria-live="polite"></main>
+    <div id="toast-region" class="toast-region" aria-live="assertive"></div>
+    <script src="/prototypes/preview-mock.js"></script>
+    <script type="module" src="/dist/chrome-extension/sidebar.js"></script>
+  </body>
+</html>
