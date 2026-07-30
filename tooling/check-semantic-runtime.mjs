@@ -85,6 +85,10 @@ try {
   );
   if (
     result?.status !== "ready" ||
+    result.diagnostics?.loaded !== true ||
+    result.diagnostics?.name !== "all-MiniLM-L6-v2" ||
+    result.diagnostics?.revision !==
+      "751bff37182d3f1213fa05d7196b954e230abad9" ||
     result.accepted?.length !== 1 ||
     result.accepted[0] !== "travel itinerary template" ||
     result.rejected?.length !== 5

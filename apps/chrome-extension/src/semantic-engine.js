@@ -3,14 +3,15 @@ import {
   classifySemanticCandidates,
   classifyWithLexicalFallback,
   DEFAULT_SEMANTIC_THRESHOLD,
+  SEMANTIC_MODEL_INFO,
   scoreSemanticCandidates,
 } from "./semantic-core.js";
 
-const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
 const EMBEDDING_CACHE_KEY = "semanticEmbeddingCacheV1";
 const MAX_CACHED_EMBEDDINGS = 300;
 
 let extractorPromise = null;
+let extractorReady = false;
 let embeddingCachePromise = null;
 
 function normalizedKey(value) {
@@ -71,7 +72,7 @@ async function createExtractor() {
     chrome.runtime.getURL("vendor/");
   env.backends.onnx.wasm.numThreads = 1;
 
-  return pipeline("feature-extraction", MODEL_ID, {
+  return pipeline("feature-extraction", SEMANTIC_MODEL_INFO.id, {
     device: "wasm",
     dtype: "q8",
     local_files_only: true,
@@ -80,12 +81,52 @@ async function createExtractor() {
 
 async function getExtractor() {
   if (!extractorPromise) {
-    extractorPromise = createExtractor().catch((error) => {
-      extractorPromise = null;
-      throw error;
-    });
+    extractorPromise = createExtractor()
+      .then((extractor) => {
+        extractorReady = true;
+        return extractor;
+      })
+      .catch((error) => {
+        extractorPromise = null;
+        extractorReady = false;
+        throw error;
+      });
   }
   return extractorPromise;
+}
+
+export async function initializeSemanticEngine() {
+  const startedAt = performance.now();
+  await getExtractor();
+  const cache = await loadEmbeddingCache();
+  return {
+    ...SEMANTIC_MODEL_INFO,
+    status: "ready",
+    loaded: extractorReady,
+    cacheEntries: Object.keys(cache).length,
+    initializationMs: Math.round(performance.now() - startedAt),
+  };
+}
+
+export async function getSemanticEngineDiagnostics() {
+  const cache = await loadEmbeddingCache();
+  return {
+    ...SEMANTIC_MODEL_INFO,
+    status: extractorReady ? "ready" : "loading",
+    loaded: extractorReady,
+    cacheEntries: Object.keys(cache).length,
+  };
+}
+
+export async function clearSemanticEmbeddingCache() {
+  embeddingCachePromise = Promise.resolve({});
+  await chrome.storage.local.remove(EMBEDDING_CACHE_KEY);
+  return {
+    ...SEMANTIC_MODEL_INFO,
+    status: extractorReady ? "ready" : "loading",
+    loaded: extractorReady,
+    cacheEntries: 0,
+  };
 }
 
 async function embedKeywords(keywords) {
@@ -125,12 +166,14 @@ export async function filterRelatedBySemantics({
   const seeds = uniquePhrases(seedKeywords);
   const related = uniquePhrases(candidates);
   if (seeds.length === 0 || related.length === 0) {
+    const diagnostics = await getSemanticEngineDiagnostics();
     return {
       accepted: related,
       rejected: [],
       scores: {},
-      status: "ready",
+      status: diagnostics.status,
       error: null,
+      cacheEntries: diagnostics.cacheEntries,
     };
   }
 
@@ -151,6 +194,7 @@ export async function filterRelatedBySemantics({
       scores,
       status: "ready",
       error: null,
+      cacheEntries: Object.keys(await loadEmbeddingCache()).length,
     };
   } catch (error) {
     const fallback = classifyWithLexicalFallback(seeds, related);

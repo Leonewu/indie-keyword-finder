@@ -64,6 +64,20 @@ const copy = {
     semanticFallback:
       "Semantic model unavailable · strict keyword fallback active",
     semanticRemoved: "{count} off-topic related queries removed",
+    modelLoading: "Loading local semantic model…",
+    modelLoadingButton: "Loading model…",
+    modelUnavailable: "Local semantic model unavailable",
+    modelUnavailableButton: "Model unavailable",
+    modelReady: "Local semantic model ready",
+    retryModel: "Retry model",
+    semanticDiagnostics: "Semantic engine",
+    model: "Model",
+    modelRevision: "Revision",
+    modelRuntime: "Runtime",
+    modelExecution: "Execution",
+    modelDimensions: "Dimensions",
+    modelCache: "Cached keywords",
+    modelLoadTime: "Initialization",
     queued: "Queued",
     clearData: "Clear all local data",
     clearDataHelp: "Remove saved keywords, settings, and Mining sessions from this browser.",
@@ -159,6 +173,20 @@ const copy = {
     semanticAnalyzing: "正在本机判断主题相关性…",
     semanticFallback: "语义模型不可用 · 已启用严格关键词回退",
     semanticRemoved: "已过滤 {count} 个偏题相关查询",
+    modelLoading: "正在加载本地语义模型…",
+    modelLoadingButton: "加载模型中…",
+    modelUnavailable: "本地语义模型不可用",
+    modelUnavailableButton: "模型不可用",
+    modelReady: "本地语义模型已就绪",
+    retryModel: "重新加载模型",
+    semanticDiagnostics: "语义引擎",
+    model: "模型",
+    modelRevision: "版本",
+    modelRuntime: "运行库",
+    modelExecution: "执行方式",
+    modelDimensions: "向量维度",
+    modelCache: "已缓存关键词",
+    modelLoadTime: "初始化耗时",
     queued: "待分析",
     clearData: "清除全部本地数据",
     clearDataHelp: "删除这个浏览器中的关键词、设置和挖掘记录。",
@@ -273,6 +301,11 @@ const state = {
   reconnectTimer: null,
   heartbeatTimer: null,
   analysis: null,
+  semanticEngine: {
+    status: "loading",
+    loaded: false,
+    cacheEntries: 0,
+  },
   nextSeconds: null,
   countdownTimer: null,
 };
@@ -661,10 +694,25 @@ function renderAnalysisStats() {
 function renderMining() {
   const status = state.analysis?.status;
   const active = ["running", "paused"].includes(status);
+  const modelReady =
+    state.semanticEngine.status === "ready" &&
+    state.semanticEngine.loaded === true;
+  const modelStatusLabel =
+    state.semanticEngine.status === "error"
+      ? t("modelUnavailable")
+      : modelReady
+        ? t("modelReady")
+        : t("modelLoading");
+  const discoverLabel =
+    state.semanticEngine.status === "error"
+      ? t("modelUnavailableButton")
+      : modelReady
+        ? t("discover")
+        : t("modelLoadingButton");
   return `
     <section class="workspace workspace--scroll mining-workspace">
       <section class="centered-hero">
-        <span class="prototype-kicker">Mining · ${state.connected ? t("ready") : t("connectionWaiting")}</span>
+        <span class="prototype-kicker">Mining · ${state.connected ? modelStatusLabel : t("connectionWaiting")}</span>
         <h1>${t("productPromise")}</h1>
         <p>${t("productDetail")}</p>
         <div class="seed-composer">
@@ -674,8 +722,17 @@ function renderMining() {
           </label>
           ${
             !active
-              ? `<button class="button button--primary" data-action="start-analysis">${t("discover")}${icon("play")}</button>`
+              ? `<button class="button button--primary" data-action="start-analysis" ${modelReady && state.connected ? "" : "disabled"}>${discoverLabel}${modelReady ? icon("play") : ""}</button>`
               : `<button class="button button--secondary" data-action="${status === "paused" ? "resume-analysis" : "pause-analysis"}">${icon(status === "paused" ? "play" : "pause")}${t(status === "paused" ? "resume" : "pause")}</button>`
+          }
+        </div>
+        <div class="model-readiness model-readiness--${state.semanticEngine.status}">
+          <span></span>
+          <strong>${modelStatusLabel}</strong>
+          ${
+            state.semanticEngine.status === "error"
+              ? `<button class="text-button" data-action="retry-semantic-engine">${t("retryModel")}</button>`
+              : ""
           }
         </div>
         <div class="model-chips">
@@ -692,6 +749,13 @@ function renderMining() {
 }
 
 function renderSettings() {
+  const engine = state.semanticEngine;
+  const engineStatus =
+    engine.status === "error"
+      ? t("modelUnavailable")
+      : engine.status === "ready" && engine.loaded
+        ? t("modelReady")
+        : t("modelLoading");
   return `
     <section class="workspace settings-view">
       <div class="settings-hero">
@@ -707,6 +771,29 @@ function renderSettings() {
             <option value="zh" ${state.language === "zh" ? "selected" : ""}>中文</option>
           </select>
         </label>
+      </section>
+      <section class="section-card diagnostics-card">
+        <header>
+          <div>
+            <strong>${t("semanticDiagnostics")}</strong>
+            <p>${engineStatus}</p>
+          </div>
+          <span class="diagnostic-status diagnostic-status--${engine.status}"></span>
+        </header>
+        <dl>
+          <div><dt>${t("model")}</dt><dd>${escapeHtml(engine.name ?? "—")} · ${escapeHtml(engine.quantization ?? "—")}</dd></div>
+          <div><dt>${t("modelRevision")}</dt><dd title="${escapeHtml(engine.revision ?? "")}">${escapeHtml(engine.revision?.slice(0, 7) ?? "—")}</dd></div>
+          <div><dt>${t("modelRuntime")}</dt><dd>${escapeHtml(engine.runtime ?? "—")}</dd></div>
+          <div><dt>${t("modelExecution")}</dt><dd>${escapeHtml(engine.executionProvider ?? "—")}</dd></div>
+          <div><dt>${t("modelDimensions")}</dt><dd>${engine.dimensions ?? "—"}</dd></div>
+          <div><dt>${t("modelCache")}</dt><dd>${engine.cacheEntries ?? 0}</dd></div>
+          <div><dt>${t("modelLoadTime")}</dt><dd>${Number.isFinite(Number(engine.initializationMs)) ? `${engine.initializationMs} ms` : "—"}</dd></div>
+        </dl>
+        ${
+          engine.status === "error"
+            ? `<button class="button button--secondary button--wide" data-action="retry-semantic-engine">${t("retryModel")}</button>`
+            : ""
+        }
       </section>
       <section class="section-card danger-zone">
         <div>
@@ -733,6 +820,25 @@ function render() {
           ? renderMining()
           : renderSettings();
   app.innerHTML = `${renderHeader()}<div class="app-body">${content}</div>`;
+}
+
+function renderPreservingFocusedInput() {
+  const active = document.activeElement;
+  const id = active?.id;
+  const selectionStart = active?.selectionStart;
+  const selectionEnd = active?.selectionEnd;
+  render();
+  if (!id) return;
+  const replacement = document.getElementById(id);
+  if (!replacement || replacement.disabled) return;
+  replacement.focus();
+  if (
+    Number.isFinite(selectionStart) &&
+    Number.isFinite(selectionEnd) &&
+    typeof replacement.setSelectionRange === "function"
+  ) {
+    replacement.setSelectionRange(selectionStart, selectionEnd);
+  }
 }
 
 async function persistCursors() {
@@ -922,6 +1028,10 @@ function connectAnalyzer() {
         toast(t("analysisStopped"));
       } else if (message.type === "ANALYSIS_ERROR") {
         toast(message.error, "error");
+      } else if (message.type === "SEMANTIC_ENGINE_STATUS") {
+        state.semanticEngine = message.semanticEngine;
+        renderPreservingFocusedInput();
+        return;
       }
       render();
     });
@@ -929,6 +1039,11 @@ function connectAnalyzer() {
     port.onDisconnect.addListener(() => {
       state.connected = false;
       state.port = null;
+      state.semanticEngine = {
+        ...state.semanticEngine,
+        status: "loading",
+        loaded: false,
+      };
       clearInterval(state.heartbeatTimer);
       render();
       clearTimeout(state.reconnectTimer);
@@ -1069,6 +1184,18 @@ async function handleClick(event) {
       break;
     }
     case "start-analysis":
+      if (
+        state.semanticEngine.status !== "ready" ||
+        !state.semanticEngine.loaded
+      ) {
+        toast(
+          state.semanticEngine.status === "error"
+            ? t("modelUnavailable")
+            : t("modelLoading"),
+          "error",
+        );
+        return;
+      }
       if (!state.connected || !state.port) {
         toast(t("noConnection"), "error");
         return;
@@ -1102,6 +1229,16 @@ async function handleClick(event) {
       });
       toast(t("analysisStarted"));
       break;
+    case "retry-semantic-engine":
+      state.semanticEngine = {
+        ...state.semanticEngine,
+        status: "loading",
+        loaded: false,
+        error: null,
+      };
+      state.port?.postMessage({ type: "RETRY_SEMANTIC_ENGINE" });
+      render();
+      break;
     case "copy-result":
       await navigator.clipboard.writeText(target.dataset.keyword ?? "");
       toast(t("copied"));
@@ -1132,6 +1269,7 @@ async function handleClick(event) {
         ...DEFAULT_SETTINGS,
         ...(await getSettings()),
       };
+      state.port?.postMessage({ type: "CLEAR_SEMANTIC_CACHE" });
       toast(t("dataCleared"));
       render();
       break;

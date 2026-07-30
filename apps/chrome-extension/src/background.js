@@ -10,7 +10,12 @@ import {
   setMiningStatus,
   stripGoogleJsonPrefix,
 } from "./mining-core.js";
-import { filterRelatedBySemantics } from "./semantic-engine.js";
+import {
+  clearSemanticEmbeddingCache,
+  filterRelatedBySemantics,
+  initializeSemanticEngine,
+} from "./semantic-engine.js";
+import { SEMANTIC_MODEL_INFO } from "./semantic-core.js";
 import { ensureDefaults } from "./storage.js";
 
 const ANALYSIS_STORAGE_KEY = "analysisState";
@@ -23,6 +28,15 @@ let activeTrendsTabId = null;
 let nextBatchTimer = null;
 let batchTimeoutTimer = null;
 let captured = freshCapture();
+let semanticInitializationPromise = null;
+let semanticEngineState = {
+  ...SEMANTIC_MODEL_INFO,
+  status: "loading",
+  loaded: false,
+  cacheEntries: 0,
+  initializationMs: null,
+  error: null,
+};
 
 function freshCapture() {
   return {
@@ -61,6 +75,55 @@ function sendSnapshot(extra = {}) {
     analysis: publicMiningSession(session),
     ...extra,
   });
+}
+
+function sendSemanticEngineStatus() {
+  send({
+    type: "SEMANTIC_ENGINE_STATUS",
+    semanticEngine: { ...semanticEngineState },
+  });
+}
+
+async function warmSemanticEngine({ force = false } = {}) {
+  if (semanticEngineState.status === "ready" && !force) {
+    sendSemanticEngineStatus();
+    return semanticEngineState;
+  }
+  if (semanticInitializationPromise) return semanticInitializationPromise;
+
+  semanticEngineState = {
+    ...semanticEngineState,
+    status: "loading",
+    loaded: false,
+    error: null,
+  };
+  sendSemanticEngineStatus();
+  semanticInitializationPromise = initializeSemanticEngine()
+    .then((diagnostics) => {
+      semanticEngineState = {
+        ...semanticEngineState,
+        ...diagnostics,
+        status: "ready",
+        loaded: true,
+        error: null,
+      };
+      sendSemanticEngineStatus();
+      return semanticEngineState;
+    })
+    .catch((error) => {
+      semanticEngineState = {
+        ...semanticEngineState,
+        status: "error",
+        loaded: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+      sendSemanticEngineStatus();
+      return semanticEngineState;
+    })
+    .finally(() => {
+      semanticInitializationPromise = null;
+    });
+  return semanticInitializationPromise;
 }
 
 async function reportAnalysisError(error) {
@@ -177,6 +240,15 @@ async function processCapturedBatch() {
     semanticStatus: semantic.status,
     semanticError: semantic.error,
   };
+  semanticEngineState = {
+    ...semanticEngineState,
+    status: semantic.status === "ready" ? "ready" : "error",
+    loaded: semantic.status === "ready",
+    cacheEntries:
+      semantic.cacheEntries ?? semanticEngineState.cacheEntries,
+    error: semantic.error,
+  };
+  sendSemanticEngineStatus();
   const observed = applyMiningObservation(session, {
     timelineData: captured.timeline,
     relatedPayloads,
@@ -203,6 +275,16 @@ async function processCapturedBatch() {
 }
 
 async function startAnalysis(message) {
+  if (
+    semanticEngineState.status !== "ready" ||
+    !semanticEngineState.loaded
+  ) {
+    throw new Error(
+      semanticEngineState.status === "error"
+        ? "The local semantic model is unavailable. Retry model loading before Discover."
+        : "Wait for the local semantic model to finish loading before Discover.",
+    );
+  }
   clearTimeout(nextBatchTimer);
   clearTimeout(batchTimeoutTimer);
   nextBatchTimer = null;
@@ -296,6 +378,18 @@ chrome.runtime.onConnect.addListener((port) => {
           break;
         case "GET_ANALYSIS_STATUS":
           sendSnapshot();
+          sendSemanticEngineStatus();
+          break;
+        case "RETRY_SEMANTIC_ENGINE":
+          await warmSemanticEngine({ force: true });
+          break;
+        case "CLEAR_SEMANTIC_CACHE":
+          semanticEngineState = {
+            ...semanticEngineState,
+            ...(await clearSemanticEmbeddingCache()),
+            error: null,
+          };
+          sendSemanticEngineStatus();
           break;
         case "PING":
           port.postMessage({ type: "PONG" });
@@ -311,6 +405,8 @@ chrome.runtime.onConnect.addListener((port) => {
     if (analysisPort === port) analysisPort = null;
   });
   sendSnapshot();
+  sendSemanticEngineStatus();
+  warmSemanticEngine().catch(console.error);
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, respond) => {

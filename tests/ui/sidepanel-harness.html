@@ -22,6 +22,22 @@
       };
 
       await waitFor(() => document.querySelector("#mining-seed"));
+      const loadingBlocksDiscover =
+        document.querySelector('[data-action="start-analysis"]')?.disabled ===
+        true;
+      const loadingInput = document.querySelector("#mining-seed");
+      loadingInput.focus();
+      loadingInput.value = "typed while model loads";
+      loadingInput.dispatchEvent(new Event("input", { bubbles: true }));
+      await waitFor(
+        () =>
+          document.querySelector('[data-action="start-analysis"]')?.disabled ===
+          false,
+      );
+      const modelReadyPreservesFocus =
+        document.activeElement?.id === "mining-seed" &&
+        document.querySelector("#mining-seed")?.value ===
+          "typed while model loads";
       const input = document.querySelector("#mining-seed");
       input.focus();
       input.value = "partially typed keyword";
@@ -65,12 +81,24 @@
         ) === true;
       const appWidth = document.querySelector("#app").getBoundingClientRect().width;
       const centeredPrototypeWidth = appWidth >= 380 && appWidth <= 400;
+      document.querySelector('[data-view="settings"]').click();
+      await waitFor(() => document.querySelector(".diagnostics-card"));
+      const modelDiagnosticsShown =
+        document.querySelector(".diagnostics-card")?.textContent.includes(
+          "all-MiniLM-L6-v2",
+        ) === true &&
+        document.querySelector(".diagnostics-card")?.textContent.includes(
+          "751bff3",
+        ) === true;
 
       const result = {
         centeredPrototypeWidth,
         boundedDepthSubmitted,
         emptySeedBlocked,
         focusPreserved,
+        loadingBlocksDiscover,
+        modelDiagnosticsShown,
+        modelReadyPreservesFocus,
         onlySeedSubmitted,
         referenceOmitted,
         semanticStatusShown,

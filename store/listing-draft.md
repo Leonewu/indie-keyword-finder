@@ -28,6 +28,8 @@ What it does:
 - starts Mining from one seed keyword;
 - expands related queries recursively;
 - removes off-topic branches with a packaged on-device semantic model;
+- prevents Mining from starting until the local model is ready and exposes
+  model diagnostics in Settings;
 - applies a transparent relative-signal rule;
 - keeps keywords, settings, and results in Chrome local storage;
 - offers English and Chinese interfaces;

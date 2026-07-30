@@ -5,8 +5,22 @@ import {
   classifySemanticCandidates,
   classifyWithLexicalFallback,
   cosineSimilarity,
+  SEMANTIC_MODEL_INFO,
   scoreSemanticCandidates,
 } from "../src/index.js";
+
+test("exposes the pinned on-device model identity", () => {
+  assert.deepEqual(SEMANTIC_MODEL_INFO, {
+    id: "Xenova/all-MiniLM-L6-v2",
+    name: "all-MiniLM-L6-v2",
+    revision: "751bff37182d3f1213fa05d7196b954e230abad9",
+    modelFile: "model_quantized.onnx",
+    quantization: "Q8",
+    dimensions: 384,
+    runtime: "Transformers.js 3.7.6",
+    executionProvider: "WASM",
+  });
+});
 
 test("calculates cosine similarity for normalized and invalid vectors", () => {
   assert.equal(cosineSimilarity([1, 0], [1, 0]), 1);

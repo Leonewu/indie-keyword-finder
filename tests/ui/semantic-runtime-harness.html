@@ -24,6 +24,9 @@
             async set(patch) {
               Object.assign(storage, patch);
             },
+            async remove(key) {
+              delete storage[key];
+            },
           },
         },
       };
@@ -32,6 +35,7 @@
         const engine = await import(
           "/dist/chrome-extension/semantic-engine.js"
         );
+        const diagnostics = await engine.initializeSemanticEngine();
         const result = await engine.filterRelatedBySemantics({
           seedKeywords: ["itinerary generator"],
           candidates: [
@@ -45,7 +49,7 @@
           threshold: 0.32,
         });
         document.querySelector("#semantic-result").textContent =
-          JSON.stringify(result);
+          JSON.stringify({ ...result, diagnostics });
       } catch (error) {
         document.querySelector("#semantic-error").textContent =
           error?.stack ?? String(error);

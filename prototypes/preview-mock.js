@@ -72,6 +72,21 @@
       threshold: 20,
       timeRange: "Past 30 Days",
     },
+    semanticEngineState: {
+      id: "Xenova/all-MiniLM-L6-v2",
+      name: "all-MiniLM-L6-v2",
+      revision: "751bff37182d3f1213fa05d7196b954e230abad9",
+      modelFile: "model_quantized.onnx",
+      quantization: "Q8",
+      dimensions: 384,
+      runtime: "Transformers.js 3.7.6",
+      executionProvider: "WASM",
+      status: "ready",
+      loaded: true,
+      cacheEntries: 37,
+      initializationMs: 842,
+      error: null,
+    },
   };
   const messageListeners = new Set();
   globalThis.__previewMessages = [];
@@ -129,6 +144,14 @@
                   });
                 }
               });
+              setTimeout(() => {
+                for (const listener of portListeners) {
+                  listener({
+                    type: "SEMANTIC_ENGINE_STATUS",
+                    semanticEngine: data.semanticEngineState,
+                  });
+                }
+              }, 120);
             }
             if (message.type === "PING") {
               queueMicrotask(() => {

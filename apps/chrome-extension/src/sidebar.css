@@ -308,6 +308,42 @@ textarea:focus-visible {
   padding-inline: 13px;
 }
 
+.model-readiness {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 8px;
+  gap: 6px;
+  justify-content: center;
+  margin: 8px auto -1px;
+}
+
+.model-readiness > span,
+.diagnostic-status {
+  background: var(--accent);
+  border-radius: 50%;
+  height: 6px;
+  width: 6px;
+}
+
+.model-readiness strong {
+  font-weight: 500;
+}
+
+.model-readiness--loading > span {
+  animation: breathe 1.4s ease-in-out infinite;
+}
+
+.model-readiness--ready > span,
+.diagnostic-status--ready {
+  background: var(--success);
+}
+
+.model-readiness--error > span,
+.diagnostic-status--error {
+  background: var(--danger);
+}
+
 .model-chips {
   display: flex;
   flex-wrap: wrap;
@@ -724,6 +760,15 @@ textarea {
   background: var(--accent-dark);
 }
 
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.button--primary:disabled:hover {
+  background: var(--accent);
+}
+
 .button--secondary {
   background: var(--ink);
   color: white;
@@ -893,6 +938,55 @@ textarea {
 
 .settings-view {
   justify-content: start;
+}
+
+.diagnostics-card header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.diagnostics-card header strong {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.diagnostics-card header p {
+  color: var(--muted);
+  font-size: 8px;
+  margin: 2px 0 0;
+}
+
+.diagnostics-card dl {
+  border-top: 1px solid var(--line);
+  margin: 0;
+}
+
+.diagnostics-card dl div {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  font-size: 8px;
+  justify-content: space-between;
+  min-height: 27px;
+}
+
+.diagnostics-card dt {
+  color: var(--muted);
+}
+
+.diagnostics-card dd {
+  font-family: "SFMono-Regular", "Cascadia Mono", monospace;
+  margin: 0;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostics-card .button {
+  margin-top: 10px;
 }
 
 .settings-hero {

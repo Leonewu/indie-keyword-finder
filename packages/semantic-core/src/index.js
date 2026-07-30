@@ -1,5 +1,16 @@
 export const DEFAULT_SEMANTIC_THRESHOLD = 0.32;
 
+export const SEMANTIC_MODEL_INFO = Object.freeze({
+  id: "Xenova/all-MiniLM-L6-v2",
+  name: "all-MiniLM-L6-v2",
+  revision: "751bff37182d3f1213fa05d7196b954e230abad9",
+  modelFile: "model_quantized.onnx",
+  quantization: "Q8",
+  dimensions: 384,
+  runtime: "Transformers.js 3.7.6",
+  executionProvider: "WASM",
+});
+
 const FALLBACK_STOP_WORDS = new Set([
   "a",
   "an",

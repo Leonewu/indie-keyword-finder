@@ -47,6 +47,11 @@ The semantic model, runtime, and WebAssembly engine are included in the release
 ZIP. Keyword text and embeddings remain on the device; no Indie Keyword Finder
 API or model service is contacted.
 
+Opening the Side Panel initializes the packaged model before Mining can start.
+The Discover button remains disabled until initialization succeeds. Settings
+shows the engine status, pinned model revision, runtime, execution provider,
+vector dimensions, initialization time, and bounded embedding-cache count.
+
 ## Install the Extension locally
 
 Requirements: Chrome 114+ and Node.js 20+.

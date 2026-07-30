@@ -8,11 +8,11 @@ import {
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { SEMANTIC_MODEL_INFO } from "../packages/semantic-core/src/index.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const modelRevision = "751bff37182d3f1213fa05d7196b954e230abad9";
 const modelBase =
-  `https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/${modelRevision}`;
+  `https://huggingface.co/${SEMANTIC_MODEL_INFO.id}/resolve/${SEMANTIC_MODEL_INFO.revision}`;
 const assetCache = join(
   root,
   "node_modules",
