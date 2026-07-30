@@ -59,6 +59,7 @@ export async function ensureDefaults() {
   const result = await chrome.storage.local.get([
     keywordKey("roots"),
     keywordKey("common"),
+    "settings",
   ]);
   const changes = {};
 
@@ -67,6 +68,18 @@ export async function ensureDefaults() {
   }
   if (!Array.isArray(result[keywordKey("common")])) {
     changes[keywordKey("common")] = [];
+  }
+  if (
+    !result.settings ||
+    result.settings.settingsSchemaVersion !==
+      DEFAULT_SETTINGS.settingsSchemaVersion
+  ) {
+    changes.settings = {
+      ...DEFAULT_SETTINGS,
+      ...(result.settings ?? {}),
+      comparisonKeyword: DEFAULT_SETTINGS.comparisonKeyword,
+      settingsSchemaVersion: DEFAULT_SETTINGS.settingsSchemaVersion,
+    };
   }
   if (Object.keys(changes).length > 0) {
     await chrome.storage.local.set(changes);

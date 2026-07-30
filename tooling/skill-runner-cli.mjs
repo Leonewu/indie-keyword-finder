@@ -7,7 +7,7 @@ switch (command) {
     const seeds = options.seed.flatMap((value) => normalizeKeywordInput(value));
     const session = createMiningSession({
       keywords: seeds,
-      comparisonKeyword: options.comparison.at(-1) ?? "weather",
+      comparisonKeyword: options.comparison.at(-1) ?? "empty",
       country: options.country.at(-1) ?? "Global",
       timeRange: options.time.at(-1) ?? "Past 30 Days",
       maxKeywords: options.max.at(-1) ?? 200,
@@ -38,10 +38,10 @@ switch (command) {
   case "explain":
     print({
       signal:
-        "The first two candidate points are zero, the latest three do not decrease, and the latest candidate/reference ratio meets the threshold.",
+        "The first two candidate points are zero, the latest three do not decrease, and the latest normalized interest meets the threshold. With an explicit comparison, the threshold applies to the candidate/reference ratio.",
       caveat:
         "This is a relative Google Trends signal, not search volume, ranking difficulty, traffic, or a guaranteed opportunity.",
-      batchLimit: 4,
+      batchLimit: 5,
     });
     break;
   default:
@@ -49,7 +49,7 @@ switch (command) {
       [
         "Indie Keyword Finder Mining runner",
         "",
-        "create  --seed <keyword> [--comparison weather] [--country Global]",
+        "create  --seed <keyword> [--comparison <optional-reference>] [--country Global]",
         "        [--time \"Past 30 Days\"] [--max 200] [--threshold 20]",
         "advance --input <observation.json>  # omit --input to read stdin",
         "restore --input <session.json>      # omit --input to read stdin",
@@ -76,7 +76,10 @@ function advanceSession(session) {
     nextUrl:
       selected.batch.length > 0
         ? buildTrendsUrl(
-            [selected.session.comparisonKeyword, ...selected.batch],
+            [
+              ...comparisonTerms(selected.session.comparisonKeyword),
+              ...selected.batch,
+            ],
             selected.session,
           )
         : null,

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Side Panel regression harness</title>
+    <link rel="stylesheet" href="/dist/chrome-extension/sidebar.css" />
+  </head>
+  <body>
+    <main id="app" aria-live="polite"></main>
+    <div id="toast-region" class="toast-region" aria-live="assertive"></div>
+    <output id="regression-result" hidden></output>
+    <script src="/prototypes/preview-mock.js"></script>
+    <script type="module" src="/dist/chrome-extension/sidebar.js"></script>
+    <script type="module">
+      const waitFor = async (predicate, timeout = 2_000) => {
+        const started = Date.now();
+        while (!predicate()) {
+          if (Date.now() - started > timeout) throw new Error("Harness timeout");
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      };
+
+      await waitFor(() => document.querySelector("#mining-seed"));
+      const input = document.querySelector("#mining-seed");
+      input.focus();
+      input.value = "partially typed keyword";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+
+      await new Promise((resolve) => setTimeout(resolve, 5_200));
+      const focusPreserved =
+        document.activeElement?.id === "mining-seed" &&
+        document.querySelector("#mining-seed")?.value ===
+          "partially typed keyword";
+
+      const currentInput = document.querySelector("#mining-seed");
+      currentInput.focus();
+      currentInput.value = "";
+      currentInput.dispatchEvent(new Event("input", { bubbles: true }));
+      document.querySelector('[data-action="start-analysis"]').click();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const emptySeedBlocked = !globalThis.__previewMessages.some(
+        (message) => message.type === "START_ANALYSIS",
+      );
+
+      currentInput.focus();
+      currentInput.value = "ai agent";
+      currentInput.dispatchEvent(new Event("input", { bubbles: true }));
+      document.querySelector('[data-action="start-analysis"]').click();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const startMessage = globalThis.__previewMessages.find(
+        (message) => message.type === "START_ANALYSIS",
+      );
+      const referenceOmitted =
+        startMessage?.comparisonKeyword === "empty";
+      const onlySeedSubmitted =
+        JSON.stringify(startMessage?.keywords) === JSON.stringify(["ai agent"]);
+      const appWidth = document.querySelector("#app").getBoundingClientRect().width;
+      const centeredPrototypeWidth = appWidth >= 380 && appWidth <= 400;
+
+      const result = {
+        centeredPrototypeWidth,
+        emptySeedBlocked,
+        focusPreserved,
+        onlySeedSubmitted,
+        referenceOmitted,
+      };
+      for (const [name, value] of Object.entries(result)) {
+        document.documentElement.dataset[name] = String(value);
+      }
+      document.documentElement.dataset.regressionComplete = "true";
+      document.querySelector("#regression-result").textContent =
+        JSON.stringify(result);
+    </script>
+  </body>
+</html>

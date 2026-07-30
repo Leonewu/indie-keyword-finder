@@ -38,7 +38,7 @@
       threshold: 20,
       timeRange: "Past 30 Days",
       country: "United States",
-      comparisonKeyword: "weather",
+      comparisonKeyword: "empty",
       currentBatch: [],
       queued: 12,
       startedAt: Date.now() - 42_000,
@@ -46,7 +46,7 @@
     },
     settings: {
       activeLibrary: "custom",
-      comparisonKeyword: "weather",
+      comparisonKeyword: "empty",
       country: "United States",
       maxKeywords: 20,
       maxTabs: 2,
@@ -55,6 +55,7 @@
     },
   };
   const messageListeners = new Set();
+  globalThis.__previewMessages = [];
 
   const local = {
     async get(keys) {
@@ -99,6 +100,7 @@
             },
           },
           postMessage(message) {
+            globalThis.__previewMessages.push(structuredClone(message));
             if (message.type === "GET_ANALYSIS_STATUS") {
               queueMicrotask(() => {
                 for (const listener of portListeners) {

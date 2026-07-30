@@ -98,7 +98,7 @@
     return {
       country: "Global",
       timeRange: "Past 30 Days",
-      comparisonKeyword: "weather",
+      comparisonKeyword: "empty",
       ...(result.settings ?? {}),
     };
   };

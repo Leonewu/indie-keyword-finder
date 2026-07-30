@@ -10,17 +10,19 @@
 
 ## Signal rule
 
-Each Google Trends comparison contains one reference series followed by up to
-four candidate series. A candidate qualifies when:
+By default, each Google Trends request contains up to five candidate series and
+no hidden reference term. A candidate qualifies when:
 
 1. its first two observed values are both zero;
 2. its latest three values are non-decreasing; and
-3. its latest value divided by the reference keyword's latest value, expressed
-   as a percentage, meets the configured threshold.
+3. its latest normalized-interest value meets the configured threshold.
 
-If the latest reference value is zero, a positive candidate value produces an
-infinite ratio and a zero candidate value produces zero. The runner still
-requires the other conditions.
+When an explicit reference keyword is supplied, it occupies the first series
+and leaves room for up to four candidates. In that mode, rule 3 uses the
+candidate's latest value divided by the reference's latest value, expressed as
+a percentage. If the latest reference value is zero, a positive candidate
+value produces an infinite ratio and a zero candidate value produces zero. The
+runner still requires the other conditions.
 
 The rule is a heuristic for early relative movement. It is not a search-volume
 estimate.
@@ -37,10 +39,10 @@ The deterministic session owns:
 - reference keyword, country, time range, and threshold;
 - status and timestamps.
 
-One transition selects at most four candidates because Google Trends accepts at
-most five compared terms and the first term is the reference. One observation
-transition qualifies the current batch, adds new related queries, deduplicates
-the queue, and completes or returns the next batch.
+One transition selects at most five candidates because Google Trends accepts at
+most five compared terms. An explicit reference reduces that capacity to four.
+One observation transition qualifies the current batch, adds new related
+queries, deduplicates the queue, and completes or returns the next batch.
 
 Platform state—browser tabs, cookies, storage, network capture, timers, and
 tool-specific handles—does not belong in the session.
@@ -57,7 +59,7 @@ Pass this object to `scripts/mine.mjs advance`:
     "batchInFlight": true
   },
   "timelineData": [
-    { "value": [10, 0] }
+    { "value": [0] }
   ],
   "relatedPayloads": [
     {
@@ -94,9 +96,9 @@ qualification could not be completed in the current environment.
 
 ## Interpretation limits
 
-Google Trends values are normalized relative interest. The reference keyword
-helps compare magnitudes inside the same request; it does not turn the values
-into absolute search counts. Validate candidates separately for:
+Google Trends values are normalized relative interest. An optional reference
+keyword helps compare magnitudes inside the same request; it does not turn the
+values into absolute search counts. Validate candidates separately for:
 
 - search intent;
 - relevance to the user's product or audience;

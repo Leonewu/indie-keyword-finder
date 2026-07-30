@@ -23,14 +23,16 @@ probability, traffic, or revenue.
 
 ## How Mining works
 
-Each batch compares one reference keyword with up to four candidates. A
-candidate qualifies when its first two observed points are zero, its latest
-three points do not decrease, and its latest value reaches the configured
-percentage of the reference keyword's latest value.
+By default, each batch sends only the queued candidates to Google Trends and
+uses all five available term slots. A candidate qualifies when its first two
+observed points are zero, its latest three points do not decrease, and its
+latest normalized-interest value reaches the configured threshold.
 
-The reference keyword is a relative anchor—not a volume lookup. Every result
-still needs separate validation for intent, current search results, competition,
-seasonality, and business value.
+An optional reference keyword can still be supplied by the Companion Skill. In
+that mode, the threshold applies to the candidate/reference ratio and each batch
+has room for four candidates. Neither mode estimates absolute volume. Every
+result still needs separate validation for intent, current search results,
+competition, seasonality, and business value.
 
 ## Install the Extension locally
 

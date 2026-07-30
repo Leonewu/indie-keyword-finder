@@ -22,15 +22,15 @@ difficulty, traffic forecasts, or guaranteed ranking opportunities.
 
 ## Mine live signals
 
-1. Confirm the seed, country/region, time range, reference keyword, result cap,
-   and threshold. Default to `Global`, `Past 30 Days`, `weather`, `200`, and
-   `20` when the user has no preference.
+1. Confirm the seed, country/region, time range, result cap, and threshold.
+   Default to `Global`, `Past 30 Days`, no reference keyword, `200`, and `20`
+   when the user has no preference. Add `--comparison` only when the user asks
+   for an explicit relative anchor.
 2. Create the first deterministic session:
 
    ```bash
    node scripts/mine.mjs create \
      --seed "ai agents" \
-     --comparison "weather" \
      --country "Global" \
      --time "Past 30 Days" \
      --max 200 \

@@ -88,8 +88,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   timeRange: "Past 30 Days",
   activeLibrary: "custom",
   maxTabs: 1,
-  comparisonKeyword: "weather",
+  comparisonKeyword: "empty",
   maxKeywords: 200,
+  settingsSchemaVersion: 2,
   threshold: 20,
 });
 
@@ -193,18 +194,20 @@ export function detectEffectiveKeywords(
   timelineData,
   candidateKeywords,
   threshold,
+  { hasReference = true } = {},
 ) {
   if (!Array.isArray(timelineData) || timelineData.length < 10) return [];
 
   const values = timelineData.map((point) =>
     Array.isArray(point?.value) ? point.value.map(Number) : [],
   );
-  const baseline = values.map((row) => Number(row[0]) || 0);
-  const baselineLast = baseline.at(-1) ?? 0;
+  const referenceLast = hasReference
+    ? Number(values.at(-1)?.[0]) || 0
+    : null;
   const effective = [];
 
   candidateKeywords.forEach((keyword, candidateIndex) => {
-    const columnIndex = candidateIndex + 1;
+    const columnIndex = candidateIndex + (hasReference ? 1 : 0);
     const series = values.map((row) => Number(row[columnIndex]) || 0);
     if (series.length !== values.length) return;
 
@@ -214,13 +217,15 @@ export function detectEffectiveKeywords(
       (value, index) => index === 0 || value >= recent[index - 1],
     );
     const lastValue = series.at(-1) ?? 0;
-    const ratio = baselineLast === 0
-      ? lastValue > 0
-        ? Number.POSITIVE_INFINITY
-        : 0
-      : (lastValue / baselineLast) * 100;
+    const score = hasReference
+      ? referenceLast === 0
+        ? lastValue > 0
+          ? Number.POSITIVE_INFINITY
+          : 0
+        : (lastValue / referenceLast) * 100
+      : lastValue;
 
-    if (startsAtZero && nonDecreasing && ratio >= Number(threshold)) {
+    if (startsAtZero && nonDecreasing && score >= Number(threshold)) {
       effective.push(keyword);
     }
   });
@@ -273,7 +278,7 @@ function sessionTimestamp(now) {
 export function createMiningSession(
   {
     keywords,
-    comparisonKeyword,
+    comparisonKeyword = DEFAULT_SETTINGS.comparisonKeyword,
     timeRange = "Past 7 Days",
     country = DEFAULT_SETTINGS.country,
     maxKeywords = DEFAULT_SETTINGS.maxKeywords,
@@ -282,13 +287,10 @@ export function createMiningSession(
   now = Date.now(),
 ) {
   const rootKeywords = uniqueKeywords(keywords ?? []);
-  const comparison = String(comparisonKeyword ?? "").trim();
+  const comparison = comparisonTerms(comparisonKeyword).at(0) ?? "empty";
 
   if (rootKeywords.length === 0) {
     throw new Error("Add at least one seed keyword before starting.");
-  }
-  if (!comparison || comparison === "empty") {
-    throw new Error("Mining requires a comparison keyword.");
   }
 
   const timestamp = sessionTimestamp(now);
@@ -356,7 +358,11 @@ export function selectNextMiningBatch(session, now = Date.now()) {
     };
   }
 
-  const batch = queue.splice(0, Math.min(4, capacity, queue.length));
+  const perBatch = keywordsPerTab(session.comparisonKeyword);
+  const batch = queue.splice(
+    0,
+    Math.min(perBatch, capacity, queue.length),
+  );
   return {
     session: {
       ...session,
@@ -387,13 +393,17 @@ export function applyMiningObservation(
     timelineData,
     session.currentBatch,
     session.threshold,
+    {
+      hasReference:
+        comparisonTerms(session.comparisonKeyword).length > 0,
+    },
   );
   const effectiveKeywords = uniqueKeywords([
     ...session.effectiveKeywords,
     ...effective,
   ]);
   const related = extractRelatedKeywords(relatedPayloads, [
-    session.comparisonKeyword,
+    ...comparisonTerms(session.comparisonKeyword),
     ...session.rootKeywords,
     ...session.relatedKeywords,
   ]);

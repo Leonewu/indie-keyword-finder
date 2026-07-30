@@ -834,7 +834,10 @@ function connectAnalyzer() {
 
     port.onMessage.addListener((message) => {
       if (message.type === "PONG") {
+        const wasConnected = state.connected;
         state.connected = true;
+        if (!wasConnected) render();
+        return;
       } else if (message.type === "ANALYSIS_SNAPSHOT") {
         state.analysis = message.analysis;
       } else if (message.type === "ANALYSIS_UPDATE") {
@@ -1016,17 +1019,10 @@ async function handleClick(event) {
         toast(t("noKeywords"), "error");
         return;
       }
-      if (
-        !state.settings.comparisonKeyword ||
-        state.settings.comparisonKeyword === "empty"
-      ) {
-        toast(t("comparisonRequired"), "error");
-        return;
-      }
       state.port.postMessage({
         type: "START_ANALYSIS",
         keywords: state.libraries.autoRoot,
-        comparisonKeyword: state.settings.comparisonKeyword,
+        comparisonKeyword: "empty",
         timeRange: state.settings.timeRange,
         country: state.settings.country,
         maxKeywords: state.settings.maxKeywords ?? 200,

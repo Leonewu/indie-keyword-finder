@@ -6,6 +6,7 @@ import {
   buildBatchTrendsUrls,
   buildTrendsUrl,
   createMiningSession,
+  DEFAULT_SETTINGS,
   detectEffectiveKeywords,
   extractRelatedKeywords,
   normalizeKeywordInput,
@@ -71,6 +72,18 @@ test("uses all five term slots when no comparison is selected", () => {
   assert.deepEqual(result.used, ["a", "b", "c", "d", "e"]);
 });
 
+test("starts Mining without a hidden comparison keyword", () => {
+  assert.equal(DEFAULT_SETTINGS.comparisonKeyword, "empty");
+
+  const session = createMiningSession({
+    keywords: ["one", "two", "three", "four", "five"],
+  });
+  const selected = selectNextMiningBatch(session);
+
+  assert.equal(session.comparisonKeyword, "empty");
+  assert.deepEqual(selected.batch, ["one", "two", "three", "four", "five"]);
+});
+
 test("parses Google Trends' anti-XSSI prefix", () => {
   assert.deepEqual(stripGoogleJsonPrefix(`)]}',\n{"ok":true}`), { ok: true });
 });
@@ -86,6 +99,25 @@ test("detects candidates that start at zero, rise recently, and clear threshold"
 
   assert.deepEqual(
     detectEffectiveKeywords(timeline, ["rising tool", "falling tool"], 50),
+    ["rising tool"],
+  );
+});
+
+test("detects normalized candidate signals without a comparison series", () => {
+  const timeline = Array.from({ length: 10 }, (_, index) => ({
+    value: [
+      index < 2 ? 0 : index < 7 ? 1 : [18, 20, 24][index - 7],
+      index < 2 ? 0 : index < 7 ? 2 : [28, 25, 31][index - 7],
+    ],
+  }));
+
+  assert.deepEqual(
+    detectEffectiveKeywords(
+      timeline,
+      ["rising tool", "uneven tool"],
+      20,
+      { hasReference: false },
+    ),
     ["rising tool"],
   );
 });

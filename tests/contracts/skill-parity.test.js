@@ -53,3 +53,19 @@ test("Companion Skill runner uses the same first-batch contract", async () => {
     buildTrendsUrl(["weather", "ai agents"], expected.session),
   );
 });
+
+test("Companion Skill defaults to a seed-only Trends request", async () => {
+  const { stdout } = await execute(process.execPath, [
+    runner.pathname,
+    "create",
+    "--seed",
+    "ai agents",
+  ]);
+  const actual = JSON.parse(stdout);
+
+  assert.equal(actual.session.comparisonKeyword, "empty");
+  assert.equal(
+    new URL(actual.nextUrl).searchParams.get("q"),
+    "ai agents",
+  );
+});

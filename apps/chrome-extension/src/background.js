@@ -1,6 +1,7 @@
 import {
   applyMiningObservation,
   buildTrendsUrl,
+  comparisonTerms,
   createMiningSession,
   failMiningSession,
   publicMiningSession,
@@ -80,13 +81,6 @@ async function resolveTrendsTab(url) {
     }
   }
 
-  const [activeTab] = await chrome.tabs.query({
-    active: true,
-    currentWindow: true,
-  });
-  if (activeTab?.id && activeTab.url?.startsWith("https://trends.google.com/")) {
-    return chrome.tabs.update(activeTab.id, { url, active: true });
-  }
   return chrome.tabs.create({ url, active: true });
 }
 
@@ -115,7 +109,7 @@ async function runNextBatch() {
 
   captured = freshCapture();
   const url = buildTrendsUrl(
-    [session.comparisonKeyword, ...selected.batch],
+    [...comparisonTerms(session.comparisonKeyword), ...selected.batch],
     { timeRange: session.timeRange, country: session.country },
   );
   const tab = await resolveTrendsTab(url);
