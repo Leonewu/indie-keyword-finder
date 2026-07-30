@@ -10,6 +10,7 @@
     "generate:skill": "node tooling/generate-skill-runner.mjs",
     "package": "node tooling/package.mjs",
     "test": "node --test",
+    "test:extension": "npm run build && node tooling/check-extension-semantic-runtime.mjs",
     "test:semantic": "npm run build && node tooling/check-semantic-runtime.mjs",
     "test:ui": "npm run build && node tooling/check-ui-regressions.mjs",
     "verify": "npm run check && npm test && npm run test:semantic && npm run test:ui && node tooling/verify-package.mjs",

@@ -33,8 +33,9 @@ to four candidates at a time—there is no unrelated hidden default term. Mining
 keeps at most five rising queries per processed keyword and defaults to two
 recursive generations. Before a related query enters the next generation, the
 Extension compares its local sentence embedding with the seed and rejects
-off-topic branches below the pinned similarity threshold. If the packaged model
-cannot initialize, Mining falls back to a strict shared-topic-token rule.
+off-topic branches below the pinned similarity threshold. If semantic inference
+fails during a running batch, Mining falls back to a strict shared-topic-token
+rule.
 
 A candidate qualifies when its recent average is materially above its early
 baseline, its latest point still shows meaningful growth, and its latest value
@@ -48,9 +49,13 @@ ZIP. Keyword text and embeddings remain on the device; no Indie Keyword Finder
 API or model service is contacted.
 
 Opening the Side Panel initializes the packaged model before Mining can start.
-The Discover button remains disabled until initialization succeeds. Settings
-shows the engine status, pinned model revision, runtime, execution provider,
-vector dimensions, initialization time, and bounded embedding-cache count.
+The model runs in a hidden extension document because ONNX Runtime cannot
+dynamically initialize WebAssembly inside a Manifest V3 service worker. The
+Discover button remains disabled until initialization succeeds. The Mining
+screen shows the current packaged-file/runtime phase, percentage, and bytes
+read; Settings also shows any exact initialization error, pinned model revision,
+runtime, execution provider, vector dimensions, initialization time, and
+bounded embedding-cache count.
 
 ## Install the Extension locally
 

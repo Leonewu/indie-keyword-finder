@@ -14,7 +14,7 @@ import {
   clearSemanticEmbeddingCache,
   filterRelatedBySemantics,
   initializeSemanticEngine,
-} from "./semantic-engine.js";
+} from "./semantic-client.js";
 import { SEMANTIC_MODEL_INFO } from "./semantic-core.js";
 import { ensureDefaults } from "./storage.js";
 
@@ -35,6 +35,13 @@ let semanticEngineState = {
   loaded: false,
   cacheEntries: 0,
   initializationMs: null,
+  progress: {
+    phase: "preparing",
+    percent: 0,
+    file: null,
+    loadedBytes: null,
+    totalBytes: null,
+  },
   error: null,
 };
 
@@ -95,6 +102,13 @@ async function warmSemanticEngine({ force = false } = {}) {
     ...semanticEngineState,
     status: "loading",
     loaded: false,
+    progress: {
+      phase: "preparing",
+      percent: 0,
+      file: null,
+      loadedBytes: null,
+      totalBytes: null,
+    },
     error: null,
   };
   sendSemanticEngineStatus();
@@ -105,6 +119,13 @@ async function warmSemanticEngine({ force = false } = {}) {
         ...diagnostics,
         status: "ready",
         loaded: true,
+        progress: {
+          phase: "ready",
+          percent: 100,
+          file: null,
+          loadedBytes: null,
+          totalBytes: null,
+        },
         error: null,
       };
       sendSemanticEngineStatus();
@@ -115,6 +136,10 @@ async function warmSemanticEngine({ force = false } = {}) {
         ...semanticEngineState,
         status: "error",
         loaded: false,
+        progress: {
+          ...semanticEngineState.progress,
+          phase: "error",
+        },
         error: error instanceof Error ? error.message : String(error),
       };
       sendSemanticEngineStatus();
@@ -410,6 +435,35 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, respond) => {
+  if (
+    message?.target === "semantic-background" &&
+    message.type === "SEMANTIC_ENGINE_PROGRESS"
+  ) {
+    if (semanticEngineState.status !== "loading") {
+      respond({ ok: true });
+      return false;
+    }
+    const currentPercent = Number(
+      semanticEngineState.progress?.percent,
+    );
+    const incomingPercent = Number(message.progress?.percent);
+    const nextProgress =
+      Number.isFinite(currentPercent) &&
+      Number.isFinite(incomingPercent) &&
+      incomingPercent < currentPercent
+        ? semanticEngineState.progress
+        : message.progress;
+    semanticEngineState = {
+      ...semanticEngineState,
+      status: "loading",
+      loaded: false,
+      progress: { ...nextProgress },
+      error: null,
+    };
+    sendSemanticEngineStatus();
+    respond({ ok: true });
+    return false;
+  }
   if (message?.type !== "BUILD_TRENDS_URL") return false;
   try {
     respond({

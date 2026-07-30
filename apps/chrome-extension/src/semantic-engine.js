@@ -13,6 +13,7 @@ const MAX_CACHED_EMBEDDINGS = 300;
 let extractorPromise = null;
 let extractorReady = false;
 let embeddingCachePromise = null;
+const progressListeners = new Set();
 
 function normalizedKey(value) {
   return String(value ?? "").trim().toLocaleLowerCase();
@@ -33,10 +34,10 @@ function uniquePhrases(values) {
 
 async function loadEmbeddingCache() {
   if (!embeddingCachePromise) {
-    embeddingCachePromise = chrome.storage.local
-      .get(EMBEDDING_CACHE_KEY)
-      .then((result) => {
-        const saved = result[EMBEDDING_CACHE_KEY];
+    embeddingCachePromise = Promise.resolve()
+      .then(() => {
+        const serialized = localStorage.getItem(EMBEDDING_CACHE_KEY);
+        const saved = serialized ? JSON.parse(serialized) : {};
         if (!saved || typeof saved !== "object") return {};
         return Object.fromEntries(
           Object.entries(saved).filter(
@@ -58,9 +59,54 @@ async function persistEmbeddingCache(cache) {
     entries.slice(Math.max(0, entries.length - MAX_CACHED_EMBEDDINGS)),
   );
   embeddingCachePromise = Promise.resolve(bounded);
-  await chrome.storage.local
-    .set({ [EMBEDDING_CACHE_KEY]: bounded })
-    .catch(() => {});
+  try {
+    localStorage.setItem(EMBEDDING_CACHE_KEY, JSON.stringify(bounded));
+  } catch {
+    // In-memory embeddings remain available if local storage is full.
+  }
+}
+
+function emitProgress(update) {
+  for (const listener of progressListeners) listener(update);
+}
+
+function normalizePipelineProgress(event) {
+  const file = String(event?.file ?? "");
+  const sourcePercent = Number(event?.progress);
+  const isModel = file.endsWith(".onnx");
+
+  if (event?.status === "progress" && Number.isFinite(sourcePercent)) {
+    return {
+      phase: isModel ? "reading-model" : "reading-files",
+      percent: Math.round(
+        isModel
+          ? 5 + Math.max(0, Math.min(100, sourcePercent)) * 0.85
+          : Math.max(1, Math.min(5, sourcePercent * 0.05)),
+      ),
+      file,
+      loadedBytes: Number(event.loaded) || null,
+      totalBytes: Number(event.total) || null,
+    };
+  }
+  if (event?.status === "done" && isModel) {
+    return {
+      phase: "initializing-runtime",
+      percent: 90,
+      file,
+      loadedBytes: Number(event.loaded) || null,
+      totalBytes: Number(event.total) || null,
+    };
+  }
+  if (event?.status === "initiate" || event?.status === "download") {
+    return {
+      phase: isModel ? "reading-model" : "reading-files",
+      percent: isModel ? 5 : 1,
+      file,
+      loadedBytes: null,
+      totalBytes: null,
+    };
+  }
+  return null;
 }
 
 async function createExtractor() {
@@ -76,6 +122,10 @@ async function createExtractor() {
     device: "wasm",
     dtype: "q8",
     local_files_only: true,
+    progress_callback(event) {
+      const update = normalizePipelineProgress(event);
+      if (update) emitProgress(update);
+    },
   });
 }
 
@@ -95,17 +145,43 @@ async function getExtractor() {
   return extractorPromise;
 }
 
-export async function initializeSemanticEngine() {
+export async function initializeSemanticEngine({ onProgress } = {}) {
   const startedAt = performance.now();
-  await getExtractor();
-  const cache = await loadEmbeddingCache();
-  return {
-    ...SEMANTIC_MODEL_INFO,
-    status: "ready",
-    loaded: extractorReady,
-    cacheEntries: Object.keys(cache).length,
-    initializationMs: Math.round(performance.now() - startedAt),
-  };
+  if (onProgress) progressListeners.add(onProgress);
+  onProgress?.({
+    phase: "preparing",
+    percent: 0,
+    file: null,
+    loadedBytes: null,
+    totalBytes: null,
+  });
+  try {
+    await getExtractor();
+    onProgress?.({
+      phase: "initializing-runtime",
+      percent: 95,
+      file: null,
+      loadedBytes: null,
+      totalBytes: null,
+    });
+    const cache = await loadEmbeddingCache();
+    onProgress?.({
+      phase: "ready",
+      percent: 100,
+      file: null,
+      loadedBytes: null,
+      totalBytes: null,
+    });
+    return {
+      ...SEMANTIC_MODEL_INFO,
+      status: "ready",
+      loaded: extractorReady,
+      cacheEntries: Object.keys(cache).length,
+      initializationMs: Math.round(performance.now() - startedAt),
+    };
+  } finally {
+    if (onProgress) progressListeners.delete(onProgress);
+  }
 }
 
 export async function getSemanticEngineDiagnostics() {
@@ -120,7 +196,7 @@ export async function getSemanticEngineDiagnostics() {
 
 export async function clearSemanticEmbeddingCache() {
   embeddingCachePromise = Promise.resolve({});
-  await chrome.storage.local.remove(EMBEDDING_CACHE_KEY);
+  localStorage.removeItem(EMBEDDING_CACHE_KEY);
   return {
     ...SEMANTIC_MODEL_INFO,
     status: extractorReady ? "ready" : "loading",

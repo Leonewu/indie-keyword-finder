@@ -28,6 +28,7 @@ test("limits host access to Google Trends", () => {
 
 test("requests only the permissions used by the public release", () => {
   assert.deepEqual(manifest.permissions, [
+    "offscreen",
     "sidePanel",
     "storage",
     "webRequest",
@@ -46,6 +47,8 @@ test("all manifest entry files exist", async () => {
   const paths = [
     `src/${manifest.background.service_worker}`,
     `src/${manifest.side_panel.default_path}`,
+    "src/offscreen.html",
+    "src/offscreen.js",
     ...manifest.content_scripts.flatMap((entry) => entry.js),
     ...Object.values(manifest.icons),
   ];

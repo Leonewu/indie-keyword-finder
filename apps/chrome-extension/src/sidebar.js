@@ -70,6 +70,13 @@ const copy = {
     modelUnavailableButton: "Model unavailable",
     modelReady: "Local semantic model ready",
     retryModel: "Retry model",
+    modelBundled: "Bundled in the extension · no network download",
+    modelPhasePreparing: "Preparing local runtime",
+    modelPhaseReadingFiles: "Reading packaged model files",
+    modelPhaseReadingModel: "Reading packaged ONNX model",
+    modelPhaseInitializingRuntime: "Starting WASM runtime",
+    modelPhaseReady: "Ready",
+    modelErrorDetail: "Technical detail",
     semanticDiagnostics: "Semantic engine",
     model: "Model",
     modelRevision: "Revision",
@@ -179,6 +186,13 @@ const copy = {
     modelUnavailableButton: "模型不可用",
     modelReady: "本地语义模型已就绪",
     retryModel: "重新加载模型",
+    modelBundled: "模型已内置在扩展中 · 不会发起网络下载",
+    modelPhasePreparing: "准备本地运行环境",
+    modelPhaseReadingFiles: "读取扩展内模型文件",
+    modelPhaseReadingModel: "读取扩展内 ONNX 模型",
+    modelPhaseInitializingRuntime: "启动 WASM 运行环境",
+    modelPhaseReady: "已就绪",
+    modelErrorDetail: "技术详情",
     semanticDiagnostics: "语义引擎",
     model: "模型",
     modelRevision: "版本",
@@ -305,6 +319,10 @@ const state = {
     status: "loading",
     loaded: false,
     cacheEntries: 0,
+    progress: {
+      phase: "preparing",
+      percent: 0,
+    },
   },
   nextSeconds: null,
   countdownTimer: null,
@@ -316,6 +334,47 @@ function t(key, replacements = {}) {
     value = value.replace(`{${name}}`, String(replacement));
   }
   return value;
+}
+
+function semanticProgressText(engine) {
+  const phases = {
+    preparing: "modelPhasePreparing",
+    "reading-files": "modelPhaseReadingFiles",
+    "reading-model": "modelPhaseReadingModel",
+    "initializing-runtime": "modelPhaseInitializingRuntime",
+    ready: "modelPhaseReady",
+  };
+  const progress = engine.progress ?? {};
+  const phase = t(phases[progress.phase] ?? "modelPhasePreparing");
+  const percent = Math.max(
+    0,
+    Math.min(100, Math.round(Number(progress.percent) || 0)),
+  );
+  const loaded = Number(progress.loadedBytes);
+  const total = Number(progress.totalBytes);
+  const bytes =
+    loaded > 0 && total > 0
+      ? ` · ${formatMegabytes(loaded)}/${formatMegabytes(total)}`
+      : "";
+  return `${phase} · ${percent}%${bytes}`;
+}
+
+function formatMegabytes(bytes) {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function renderModelProgress(engine) {
+  const percent = Math.max(
+    0,
+    Math.min(100, Math.round(Number(engine.progress?.percent) || 0)),
+  );
+  const file = String(engine.progress?.file ?? "").split("/").at(-1);
+  return `
+    <div class="model-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
+      <span style="width: ${percent}%"></span>
+    </div>
+    <small title="${escapeHtml(file)}">${escapeHtml(semanticProgressText(engine))}</small>
+  `;
 }
 
 function escapeHtml(value) {
@@ -708,7 +767,7 @@ function renderMining() {
       ? t("modelUnavailableButton")
       : modelReady
         ? t("discover")
-        : t("modelLoadingButton");
+        : `${t("modelLoadingButton")} ${Math.round(Number(state.semanticEngine.progress?.percent) || 0)}%`;
   return `
     <section class="workspace workspace--scroll mining-workspace">
       <section class="centered-hero">
@@ -727,11 +786,23 @@ function renderMining() {
           }
         </div>
         <div class="model-readiness model-readiness--${state.semanticEngine.status}">
-          <span></span>
-          <strong>${modelStatusLabel}</strong>
+          <div class="model-readiness__status">
+            <span class="model-readiness__dot"></span>
+            <strong>${modelStatusLabel}</strong>
+            ${
+              state.semanticEngine.status === "error"
+                ? `<button class="text-button" data-action="retry-semantic-engine">${t("retryModel")}</button>`
+                : ""
+            }
+          </div>
           ${
-            state.semanticEngine.status === "error"
-              ? `<button class="text-button" data-action="retry-semantic-engine">${t("retryModel")}</button>`
+            state.semanticEngine.status === "loading"
+              ? `${renderModelProgress(state.semanticEngine)}<small>${t("modelBundled")}</small>`
+              : ""
+          }
+          ${
+            state.semanticEngine.status === "error" && state.semanticEngine.error
+              ? `<small class="model-error"><strong>${t("modelErrorDetail")}:</strong> ${escapeHtml(state.semanticEngine.error)}</small>`
               : ""
           }
         </div>
@@ -780,6 +851,16 @@ function renderSettings() {
           </div>
           <span class="diagnostic-status diagnostic-status--${engine.status}"></span>
         </header>
+        ${
+          engine.status === "loading"
+            ? `<div class="diagnostics-progress">${renderModelProgress(engine)}<small>${t("modelBundled")}</small></div>`
+            : ""
+        }
+        ${
+          engine.status === "error" && engine.error
+            ? `<p class="diagnostics-error"><strong>${t("modelErrorDetail")}:</strong> ${escapeHtml(engine.error)}</p>`
+            : ""
+        }
         <dl>
           <div><dt>${t("model")}</dt><dd>${escapeHtml(engine.name ?? "—")} · ${escapeHtml(engine.quantization ?? "—")}</dd></div>
           <div><dt>${t("modelRevision")}</dt><dd title="${escapeHtml(engine.revision ?? "")}">${escapeHtml(engine.revision?.slice(0, 7) ?? "—")}</dd></div>
@@ -1234,6 +1315,10 @@ async function handleClick(event) {
         ...state.semanticEngine,
         status: "loading",
         loaded: false,
+        progress: {
+          phase: "preparing",
+          percent: 0,
+        },
         error: null,
       };
       state.port?.postMessage({ type: "RETRY_SEMANTIC_ENGINE" });
