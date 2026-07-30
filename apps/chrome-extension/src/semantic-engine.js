@@ -9,6 +9,8 @@ import {
 
 const EMBEDDING_CACHE_KEY = "semanticEmbeddingCacheV1";
 const MAX_CACHED_EMBEDDINGS = 300;
+const MISSING_CONTENT_LENGTH_WARNING =
+  "Unable to determine content-length from response headers. Will expand buffer when needed.";
 
 let extractorPromise = null;
 let extractorReady = false;
@@ -68,6 +70,28 @@ async function persistEmbeddingCache(cache) {
 
 function emitProgress(update) {
   for (const listener of progressListeners) listener(update);
+}
+
+async function getExtractorWithKnownWarningFiltered() {
+  const originalWarn = console.warn;
+  let reported = false;
+  console.warn = (...args) => {
+    if (args[0] === MISSING_CONTENT_LENGTH_WARNING) {
+      if (!reported) {
+        reported = true;
+        console.info(
+          "[Indie Keyword Finder] Local extension assets omit Content-Length; Transformers.js is expanding the read buffer safely.",
+        );
+      }
+      return;
+    }
+    originalWarn(...args);
+  };
+  try {
+    return await getExtractor();
+  } finally {
+    console.warn = originalWarn;
+  }
 }
 
 function normalizePipelineProgress(event) {
@@ -156,7 +180,7 @@ export async function initializeSemanticEngine({ onProgress } = {}) {
     totalBytes: null,
   });
   try {
-    await getExtractor();
+    await getExtractorWithKnownWarningFiltered();
     onProgress?.({
       phase: "initializing-runtime",
       percent: 95,
@@ -213,7 +237,7 @@ async function embedKeywords(keywords) {
   );
 
   if (missing.length > 0) {
-    const extractor = await getExtractor();
+    const extractor = await getExtractorWithKnownWarningFiltered();
     const output = await extractor(missing, {
       pooling: "mean",
       normalize: true,
