@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, normalize } from "node:path";
@@ -21,14 +21,15 @@ const child = spawn(chromium, [
   "--disable-dev-shm-usage",
   "--no-first-run",
   "--no-sandbox",
-  "--remote-debugging-port=0",
+  "--remote-debugging-pipe",
   `--user-data-dir=${profile}`,
   "about:blank",
-]);
+], {
+  stdio: ["ignore", "pipe", "pipe", "pipe", "pipe"],
+});
 
 try {
-  const websocketUrl = await devtoolsUrl(child, profile);
-  const cdp = await connectCdp(websocketUrl);
+  const cdp = connectCdpPipe(child);
   const { targetId } = await cdp.send("Target.createTarget", {
     url: targetUrl,
   });
@@ -76,7 +77,6 @@ try {
     console.log("Side Panel focus, width, and reference-term regressions pass.");
   }
   await cdp.send("Browser.close");
-  cdp.close();
 } finally {
   child.kill("SIGTERM");
   await new Promise((resolve) => server.close(resolve));
@@ -132,69 +132,52 @@ async function findChromium() {
   );
 }
 
-async function devtoolsUrl(browserProcess, profileDirectory) {
-  let stderr = "";
-  let startupError = null;
-  let exitCode = null;
-  browserProcess.stderr.on("data", (chunk) => {
-    stderr += chunk;
-  });
-  browserProcess.on("error", (error) => {
-    startupError = error;
-  });
-  browserProcess.on("exit", (code) => {
-    exitCode = code;
-  });
-
-  const deadline = Date.now() + 20_000;
-  while (Date.now() < deadline) {
-    if (startupError) throw startupError;
-    if (exitCode != null) {
-      throw new Error(`Chromium exited with ${exitCode}: ${stderr}`);
-    }
-
-    const activePort = await readFile(
-      join(profileDirectory, "DevToolsActivePort"),
-      "utf8",
-    ).catch(() => "");
-    const [port, path] = activePort.trim().split(/\r?\n/);
-    if (/^\d+$/.test(port) && path?.startsWith("/")) {
-      return `ws://127.0.0.1:${port}${path}`;
-    }
-
-    const stderrMatch = stderr.match(/DevTools listening on (ws:\/\/[^\s]+)/);
-    if (stderrMatch) return stderrMatch[1];
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  throw new Error(`Chromium did not expose DevTools: ${stderr}`);
-}
-
-async function connectCdp(url) {
-  const socket = new WebSocket(url);
-  await new Promise((resolve, reject) => {
-    socket.addEventListener("open", resolve, { once: true });
-    socket.addEventListener("error", reject, { once: true });
-  });
+function connectCdpPipe(browserProcess) {
+  const input = browserProcess.stdio[3];
+  const output = browserProcess.stdio[4];
   let nextId = 0;
+  let buffer = Buffer.alloc(0);
   const pending = new Map();
-  socket.addEventListener("message", (event) => {
-    const message = JSON.parse(event.data);
-    if (!message.id || !pending.has(message.id)) return;
-    const { resolve, reject } = pending.get(message.id);
-    pending.delete(message.id);
-    if (message.error) reject(new Error(message.error.message));
-    else resolve(message.result);
+
+  const rejectPending = (error) => {
+    for (const { reject } of pending.values()) reject(error);
+    pending.clear();
+  };
+  output.on("data", (chunk) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    let separator = buffer.indexOf(0);
+    while (separator !== -1) {
+      const payload = buffer.subarray(0, separator).toString("utf8");
+      buffer = buffer.subarray(separator + 1);
+      if (payload) {
+        const message = JSON.parse(payload);
+        if (message.id && pending.has(message.id)) {
+          const { resolve, reject } = pending.get(message.id);
+          pending.delete(message.id);
+          if (message.error) reject(new Error(message.error.message));
+          else resolve(message.result);
+        }
+      }
+      separator = buffer.indexOf(0);
+    }
   });
+  output.on("error", rejectPending);
+  browserProcess.on("error", rejectPending);
+  browserProcess.on("exit", (code) => {
+    if (pending.size > 0) {
+      rejectPending(new Error(`Chromium exited with ${code}.`));
+    }
+  });
+
   return {
-    close() {
-      socket.close();
-    },
     send(method, params = {}, sessionId) {
       const id = (nextId += 1);
       return new Promise((resolve, reject) => {
         pending.set(id, { reject, resolve });
-        socket.send(JSON.stringify({ id, method, params, sessionId }));
+        const message = Buffer.from(
+          JSON.stringify({ id, method, params, sessionId }),
+        );
+        input.write(Buffer.concat([message, Buffer.from([0])]));
       });
     },
   };
