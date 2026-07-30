@@ -72,7 +72,7 @@ test("uses all five term slots when no comparison is selected", () => {
   assert.deepEqual(result.used, ["a", "b", "c", "d", "e"]);
 });
 
-test("starts Mining without a hidden comparison keyword", () => {
+test("uses the seed as the automatic Mining reference without adding a hidden term", () => {
   assert.equal(DEFAULT_SETTINGS.comparisonKeyword, "empty");
 
   const session = createMiningSession({
@@ -81,7 +81,9 @@ test("starts Mining without a hidden comparison keyword", () => {
   const selected = selectNextMiningBatch(session);
 
   assert.equal(session.comparisonKeyword, "empty");
+  assert.equal(session.referenceKeyword, "one");
   assert.deepEqual(selected.batch, ["one", "two", "three", "four", "five"]);
+  assert.equal(selected.session.currentDepth, 0);
 });
 
 test("parses Google Trends' anti-XSSI prefix", () => {
@@ -107,7 +109,7 @@ test("detects normalized candidate signals without a comparison series", () => {
   const timeline = Array.from({ length: 10 }, (_, index) => ({
     value: [
       index < 2 ? 0 : index < 7 ? 1 : [18, 20, 24][index - 7],
-      index < 2 ? 0 : index < 7 ? 2 : [28, 25, 31][index - 7],
+      index < 2 ? 0 : index < 7 ? 2 : [31, 25, 28][index - 7],
     ],
   }));
 
@@ -119,6 +121,25 @@ test("detects normalized candidate signals without a comparison series", () => {
       { hasReference: false },
     ),
     ["rising tool"],
+  );
+});
+
+test("detects material growth from a low non-zero baseline", () => {
+  const timeline = Array.from({ length: 10 }, (_, index) => ({
+    value: [
+      20,
+      index < 3 ? [4, 5, 4][index] : index < 7 ? 6 : [12, 15, 18][index - 7],
+      index < 3 ? 10 : index < 7 ? 11 : [12, 11, 12][index - 7],
+    ],
+  }));
+
+  assert.deepEqual(
+    detectEffectiveKeywords(
+      timeline,
+      ["accelerating tool", "flat tool"],
+      20,
+    ),
+    ["accelerating tool"],
   );
 });
 
@@ -152,6 +173,123 @@ test("prefers rising related queries and deduplicates exclusions", () => {
     "new tool",
     "fallback tool",
   ]);
+});
+
+test("limits expansion candidates per related-query payload", () => {
+  const payload = {
+    default: {
+      rankedList: [
+        { rankedKeyword: [] },
+        {
+          rankedKeyword: [
+            { query: "one" },
+            { query: "two" },
+            { query: "three" },
+          ],
+        },
+      ],
+    },
+  };
+
+  assert.deepEqual(
+    extractRelatedKeywords([payload], [], { limitPerPayload: 2 }),
+    ["one", "two"],
+  );
+});
+
+test("anchors later batches to the seed and limits breadth", () => {
+  const created = createMiningSession({
+    keywords: ["itinerary generator"],
+    maxDepth: 2,
+    maxRelatedPerKeyword: 5,
+  });
+  const first = selectNextMiningBatch(created);
+  const payload = {
+    default: {
+      rankedList: [
+        { rankedKeyword: [] },
+        {
+          rankedKeyword: Array.from({ length: 8 }, (_, index) => ({
+            query: `related ${index + 1}`,
+          })),
+        },
+      ],
+    },
+  };
+  const observed = applyMiningObservation(first.session, {
+    timelineData: Array.from({ length: 10 }, () => ({ value: [10] })),
+    relatedPayloads: [payload],
+  });
+  const second = selectNextMiningBatch(observed.session);
+
+  assert.equal(observed.session.batchesProcessed, 1);
+  assert.deepEqual(observed.session.queue, [
+    "related 1",
+    "related 2",
+    "related 3",
+    "related 4",
+    "related 5",
+  ]);
+  assert.equal(observed.session.keywordDepths["related 1"], 1);
+  assert.deepEqual(second.batch, [
+    "related 1",
+    "related 2",
+    "related 3",
+    "related 4",
+  ]);
+  assert.equal(
+    new URL(
+      buildTrendsUrl(
+        [second.session.referenceKeyword, ...second.batch],
+        second.session,
+      ),
+    ).searchParams.get("q"),
+    "itinerary generator,related 1,related 2,related 3,related 4",
+  );
+});
+
+test("does not enqueue related queries beyond the configured depth", () => {
+  const created = createMiningSession({
+    keywords: ["seed"],
+    maxDepth: 1,
+    maxRelatedPerKeyword: 1,
+  });
+  const first = selectNextMiningBatch(created);
+  const firstObserved = applyMiningObservation(first.session, {
+    timelineData: Array.from({ length: 10 }, () => ({ value: [10] })),
+    relatedPayloads: [
+      {
+        default: {
+          rankedList: [
+            { rankedKeyword: [] },
+            { rankedKeyword: [{ query: "child" }] },
+          ],
+        },
+      },
+    ],
+  });
+  const second = selectNextMiningBatch(firstObserved.session);
+  const secondObserved = applyMiningObservation(second.session, {
+    timelineData: Array.from({ length: 10 }, () => ({ value: [10, 10] })),
+    relatedPayloads: [
+      {
+        default: {
+          rankedList: [
+            { rankedKeyword: [] },
+            { rankedKeyword: [{ query: "grandchild" }] },
+          ],
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(secondObserved.session.relatedKeywords, [
+    "child",
+    "grandchild",
+  ]);
+  assert.deepEqual(secondObserved.session.queue, []);
+  assert.equal(secondObserved.session.status, "complete");
+  assert.equal(secondObserved.session.batchesProcessed, 2);
 });
 
 test("runs a Mining batch through the public session interface", () => {
@@ -199,7 +337,7 @@ test("runs a Mining batch through the public session interface", () => {
     300,
   );
 
-  assert.deepEqual(observed.addedEffective, ["seed one"]);
+  assert.deepEqual(observed.addedEffective, []);
   assert.deepEqual(observed.addedRelated, ["fresh query"]);
   assert.deepEqual(observed.session.queue, ["fresh query"]);
   assert.equal(observed.session.processed, 2);

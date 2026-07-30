@@ -9,8 +9,10 @@ switch (command) {
       keywords: seeds,
       comparisonKeyword: options.comparison.at(-1) ?? "empty",
       country: options.country.at(-1) ?? "Global",
+      maxDepth: options.depth.at(-1) ?? 2,
       timeRange: options.time.at(-1) ?? "Past 30 Days",
       maxKeywords: options.max.at(-1) ?? 200,
+      maxRelatedPerKeyword: options.breadth.at(-1) ?? 5,
       threshold: options.threshold.at(-1) ?? 20,
     });
     print(advanceSession(session));
@@ -38,10 +40,12 @@ switch (command) {
   case "explain":
     print({
       signal:
-        "The first two candidate points are zero, the latest three do not decrease, and the latest normalized interest meets the threshold. With an explicit comparison, the threshold applies to the candidate/reference ratio.",
+        "A candidate's recent average must be at least 1.5x its early average, its latest point must show material recent growth, and its latest relative signal must meet the threshold.",
       caveat:
         "This is a relative Google Trends signal, not search volume, ranking difficulty, traffic, or a guaranteed opportunity.",
-      batchLimit: 5,
+      defaultDepth: 2,
+      expansionPerKeyword: 5,
+      laterBatchLimit: 4,
     });
     break;
   default:
@@ -50,7 +54,8 @@ switch (command) {
         "Indie Keyword Finder Mining runner",
         "",
         "create  --seed <keyword> [--comparison <optional-reference>] [--country Global]",
-        "        [--time \"Past 30 Days\"] [--max 200] [--threshold 20]",
+        "        [--time \"Past 30 Days\"] [--depth 2] [--breadth 5]",
+        "        [--max 200] [--threshold 20]",
         "advance --input <observation.json>  # omit --input to read stdin",
         "restore --input <session.json>      # omit --input to read stdin",
         "explain",
@@ -77,7 +82,7 @@ function advanceSession(session) {
       selected.batch.length > 0
         ? buildTrendsUrl(
             [
-              ...comparisonTerms(selected.session.comparisonKeyword),
+              selected.session.referenceKeyword,
               ...selected.batch,
             ],
             selected.session,
@@ -88,8 +93,10 @@ function advanceSession(session) {
 
 function parseOptions(args) {
   const result = {
+    breadth: [],
     comparison: [],
     country: [],
+    depth: [],
     input: [],
     max: [],
     seed: [],

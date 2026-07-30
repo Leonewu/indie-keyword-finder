@@ -1,7 +1,6 @@
 import {
   applyMiningObservation,
   buildTrendsUrl,
-  comparisonTerms,
   createMiningSession,
   failMiningSession,
   publicMiningSession,
@@ -109,7 +108,7 @@ async function runNextBatch() {
 
   captured = freshCapture();
   const url = buildTrendsUrl(
-    [...comparisonTerms(session.comparisonKeyword), ...selected.batch],
+    [session.referenceKeyword, ...selected.batch],
     { timeRange: session.timeRange, country: session.country },
   );
   const tab = await resolveTrendsTab(url);
@@ -183,6 +182,8 @@ async function startAnalysis(message) {
     timeRange: message.timeRange,
     country: message.country,
     maxKeywords: message.maxKeywords,
+    maxDepth: message.maxDepth,
+    maxRelatedPerKeyword: message.maxRelatedPerKeyword,
     threshold: message.threshold,
   });
   activeTrendsTabId = null;
@@ -313,8 +314,11 @@ chrome.webRequest.onCompleted.addListener(
     const isCandidateRelated =
       url.pathname === "/trends/api/widgetdata/relatedsearches" &&
       request.includes('"keywordType":"QUERY"') &&
-      !request.includes(
-        `"value":"${session.comparisonKeyword.replaceAll('"', '\\"')}"`,
+      session.currentBatch.some(
+        (keyword) =>
+          request.includes(
+            `"value":"${keyword.replaceAll('"', '\\"')}"`,
+          ),
       );
     if (!isTimeline && !isCandidateRelated) return;
 

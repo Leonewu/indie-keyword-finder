@@ -56,11 +56,13 @@
         startMessage?.comparisonKeyword === "empty";
       const onlySeedSubmitted =
         JSON.stringify(startMessage?.keywords) === JSON.stringify(["ai agent"]);
+      const boundedDepthSubmitted = startMessage?.maxDepth === 2;
       const appWidth = document.querySelector("#app").getBoundingClientRect().width;
       const centeredPrototypeWidth = appWidth >= 380 && appWidth <= 400;
 
       const result = {
         centeredPrototypeWidth,
+        boundedDepthSubmitted,
         emptySeedBlocked,
         focusPreserved,
         onlySeedSubmitted,

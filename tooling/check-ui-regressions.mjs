@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, normalize } from "node:path";
@@ -27,7 +27,7 @@ const child = spawn(chromium, [
 ]);
 
 try {
-  const websocketUrl = await devtoolsUrl(child);
+  const websocketUrl = await devtoolsUrl(child, profile);
   const cdp = await connectCdp(websocketUrl);
   const { targetId } = await cdp.send("Target.createTarget", {
     url: targetUrl,
@@ -132,25 +132,42 @@ async function findChromium() {
   );
 }
 
-function devtoolsUrl(browserProcess) {
-  return new Promise((resolve, reject) => {
-    let stderr = "";
-    const timeout = setTimeout(
-      () => reject(new Error(`Chromium did not expose DevTools: ${stderr}`)),
-      5_000,
-    );
-    browserProcess.stderr.on("data", (chunk) => {
-      stderr += chunk;
-      const match = stderr.match(/DevTools listening on (ws:\/\/[^\s]+)/);
-      if (!match) return;
-      clearTimeout(timeout);
-      resolve(match[1]);
-    });
-    browserProcess.on("error", reject);
-    browserProcess.on("exit", (code) => {
-      if (code !== 0) reject(new Error(`Chromium exited with ${code}.`));
-    });
+async function devtoolsUrl(browserProcess, profileDirectory) {
+  let stderr = "";
+  let startupError = null;
+  let exitCode = null;
+  browserProcess.stderr.on("data", (chunk) => {
+    stderr += chunk;
   });
+  browserProcess.on("error", (error) => {
+    startupError = error;
+  });
+  browserProcess.on("exit", (code) => {
+    exitCode = code;
+  });
+
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    if (startupError) throw startupError;
+    if (exitCode != null) {
+      throw new Error(`Chromium exited with ${exitCode}: ${stderr}`);
+    }
+
+    const activePort = await readFile(
+      join(profileDirectory, "DevToolsActivePort"),
+      "utf8",
+    ).catch(() => "");
+    const [port, path] = activePort.trim().split(/\r?\n/);
+    if (/^\d+$/.test(port) && path?.startsWith("/")) {
+      return `ws://127.0.0.1:${port}${path}`;
+    }
+
+    const stderrMatch = stderr.match(/DevTools listening on (ws:\/\/[^\s]+)/);
+    if (stderrMatch) return stderrMatch[1];
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  throw new Error(`Chromium did not expose DevTools: ${stderr}`);
 }
 
 async function connectCdp(url) {

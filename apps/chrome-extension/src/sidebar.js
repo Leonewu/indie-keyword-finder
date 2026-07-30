@@ -1,6 +1,7 @@
 import {
   COMPARISON_KEYWORDS,
   DATE_OPTIONS,
+  DEFAULT_SETTINGS,
   GEO_OPTIONS,
   buildBatchTrendsUrls,
   buildTrendsUrl,
@@ -42,7 +43,10 @@ const copy = {
     keywordLimit: "Keyword limit",
     threshold: "Signal threshold",
     thresholdHelp:
-      "A candidate qualifies when its latest relative Trends signal reaches this percentage of the reference keyword.",
+      "A candidate must grow materially from its early baseline and reach this relative signal.",
+    depth: "Depth",
+    depthHelp:
+      "How many related-query generations Mining may process after the seed.",
     seedKeyword: "Seed keyword",
     seedPlaceholder: "e.g. ai agents",
     discover: "Discover",
@@ -83,6 +87,8 @@ const copy = {
     newKeywords: "New words",
     results: "Qualified new words",
     nextBatch: "Next batch in {seconds}s · {processed} processed",
+    miningProgress:
+      "{processed}/{max} processed · {batches} batches · depth {depth}/{maxDepth}",
     language: "Language",
     localOnly: "All lists and settings stay in Chrome local storage.",
     connectionReady: "Analyzer connected",
@@ -129,7 +135,9 @@ const copy = {
     comparisonHelp: "同一次 Google Trends 请求中的相对基准，不代表搜索量。",
     keywordLimit: "关键词上限",
     threshold: "有效词阈值",
-    thresholdHelp: "候选词最新趋势值达到对比词的此百分比时，判定为有效新词。",
+    thresholdHelp: "候选词需从早期低位明显增长，并达到此相对信号阈值。",
+    depth: "递归深度",
+    depthHelp: "种子词之后最多继续处理多少代相关查询。",
     seedKeyword: "种子关键词",
     seedPlaceholder: "例如：ai agents",
     discover: "开始发现",
@@ -169,6 +177,8 @@ const copy = {
     newKeywords: "有效新词",
     results: "有效新词列表",
     nextBatch: "下一批 {seconds} 秒后开始 · 已分析 {processed} 个",
+    miningProgress:
+      "已处理 {processed}/{max} · {batches} 批 · 深度 {depth}/{maxDepth}",
     language: "语言",
     localOnly: "所有列表和设置仅保存在 Chrome 本地存储中。",
     connectionReady: "分析器已连接",
@@ -558,7 +568,16 @@ function renderAnalysisStats() {
           <span>${t("results")}</span>
           <strong>${analysis.effectiveKeywords?.length ?? 0} ${t("newKeywords")}</strong>
         </div>
-        <small>${analysis.relatedKeywords?.length ?? 0} ${t("relatedKeywords")} · ${analysis.queued ?? 0} ${t("queued")}</small>
+        <small>${t("miningProgress", {
+          processed: analysis.processed ?? 0,
+          max: analysis.maxKeywords ?? 0,
+          batches: analysis.batchesProcessed ?? 0,
+          depth:
+            analysis.currentDepth ??
+            analysis.deepestProcessed ??
+            0,
+          maxDepth: analysis.maxDepth ?? 0,
+        })}</small>
       </header>
       ${
         running && state.nextSeconds != null
@@ -617,6 +636,7 @@ function renderMining() {
           <label><span>${t("country")}</span><select data-setting="country">${Object.keys(GEO_OPTIONS).map((name) => `<option value="${name}" ${name === state.settings.country ? "selected" : ""}>${name}</option>`).join("")}</select></label>
           <label><span>${t("time")}</span><select data-setting="timeRange">${Object.keys(DATE_OPTIONS).map((name) => `<option value="${name}" ${name === state.settings.timeRange ? "selected" : ""}>${name}</option>`).join("")}</select></label>
           <label><span>${t("threshold")}</span><input data-setting="threshold" type="number" min="1" max="10000" value="${state.settings.threshold ?? 20}" /></label>
+          <label title="${t("depthHelp")}"><span>${t("depth")}</span><input data-setting="maxDepth" type="number" min="1" max="5" value="${state.settings.maxDepth ?? 2}" /></label>
         </div>
       </section>
       ${active ? `<div class="analysis-actions analysis-actions--compact"><button class="text-button text-button--danger" data-action="stop-analysis">${icon("stop")}${t("stop")}</button></div>` : ""}
@@ -1025,7 +1045,10 @@ async function handleClick(event) {
         comparisonKeyword: "empty",
         timeRange: state.settings.timeRange,
         country: state.settings.country,
+        maxDepth: state.settings.maxDepth ?? 2,
         maxKeywords: state.settings.maxKeywords ?? 200,
+        maxRelatedPerKeyword:
+          state.settings.maxRelatedPerKeyword ?? 5,
         threshold: state.settings.threshold ?? 20,
       });
       toast(t("analysisStarted"));
@@ -1056,7 +1079,10 @@ async function handleClick(event) {
         rootLastUsed: [],
       };
       state.miningInput = "";
-      state.settings = { maxKeywords: 200, threshold: 20, ...(await getSettings()) };
+      state.settings = {
+        ...DEFAULT_SETTINGS,
+        ...(await getSettings()),
+      };
       toast(t("dataCleared"));
       render();
       break;
@@ -1106,7 +1132,11 @@ async function handleInput(event) {
   const setting = event.target.dataset.setting;
   if (!setting) return;
   let value = event.target.value;
-  if (["maxTabs", "maxKeywords", "threshold"].includes(setting)) {
+  if (
+    ["maxTabs", "maxDepth", "maxKeywords", "threshold"].includes(
+      setting,
+    )
+  ) {
     value = Math.max(1, Number(value) || 1);
   }
   state.settings = await saveSettings({ [setting]: value });
@@ -1147,8 +1177,7 @@ async function initialize() {
   ]);
 
   state.settings = {
-    maxKeywords: 200,
-    threshold: 20,
+    ...DEFAULT_SETTINGS,
     ...settings,
   };
   state.language = language;

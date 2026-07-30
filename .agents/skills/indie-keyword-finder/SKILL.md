@@ -22,10 +22,11 @@ difficulty, traffic forecasts, or guaranteed ranking opportunities.
 
 ## Mine live signals
 
-1. Confirm the seed, country/region, time range, result cap, and threshold.
-   Default to `Global`, `Past 30 Days`, no reference keyword, `200`, and `20`
-   when the user has no preference. Add `--comparison` only when the user asks
-   for an explicit relative anchor.
+1. Confirm the seed, country/region, time range, depth, per-keyword breadth,
+   result cap, and threshold. Default to `Global`, `Past 30 Days`, `2`, `5`,
+   `200`, and `20` when the user has no preference. The seed becomes the
+   automatic reference after its initial discovery request. Add `--comparison`
+   only when the user asks to override that anchor.
 2. Create the first deterministic session:
 
    ```bash
@@ -33,6 +34,8 @@ difficulty, traffic forecasts, or guaranteed ranking opportunities.
      --seed "ai agents" \
      --country "Global" \
      --time "Past 30 Days" \
+     --depth 2 \
+     --breadth 5 \
      --max 200 \
      --threshold 20
    ```

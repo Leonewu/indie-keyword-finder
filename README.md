@@ -23,16 +23,18 @@ probability, traffic, or revenue.
 
 ## How Mining works
 
-By default, each batch sends only the queued candidates to Google Trends and
-uses all five available term slots. A candidate qualifies when its first two
-observed points are zero, its latest three points do not decrease, and its
-latest normalized-interest value reaches the configured threshold.
+The first request contains only the seed so Google Trends can return its related
+queries. Later batches reuse that seed as the visible reference and compare up
+to four candidates at a time—there is no unrelated hidden default term. Mining
+keeps at most five rising queries per processed keyword and defaults to two
+recursive generations to limit topic drift.
 
-An optional reference keyword can still be supplied by the Companion Skill. In
-that mode, the threshold applies to the candidate/reference ratio and each batch
-has room for four candidates. Neither mode estimates absolute volume. Every
-result still needs separate validation for intent, current search results,
-competition, seasonality, and business value.
+A candidate qualifies when its recent average is materially above its early
+baseline, its latest point still shows meaningful growth, and its latest value
+reaches the configured percentage of the seed reference. An optional reference
+override can be supplied by the Companion Skill. Neither mode estimates
+absolute volume. Every result still needs separate validation for intent,
+current search results, competition, seasonality, and business value.
 
 ## Install the Extension locally
 
