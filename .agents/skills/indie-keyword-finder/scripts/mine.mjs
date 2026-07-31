@@ -96,8 +96,15 @@ export const DEFAULT_SETTINGS = Object.freeze({
   maxKeywords: 200,
   maxRelatedPerKeyword: 5,
   semanticThreshold: 0.32,
+  signalMode: "balanced",
   settingsSchemaVersion: 4,
   threshold: 20,
+});
+
+export const SIGNAL_MODES = Object.freeze({
+  emerging: "emerging",
+  balanced: "balanced",
+  demand: "demand",
 });
 
 export function uniqueKeywords(keywords) {
@@ -196,13 +203,19 @@ export function stripGoogleJsonPrefix(text) {
   return JSON.parse(source.slice(brace));
 }
 
-export function detectEffectiveKeywords(
+export function evaluateEffectiveKeywords(
   timelineData,
   candidateKeywords,
   threshold,
-  { hasReference = true } = {},
+  { hasReference = true, signalMode = SIGNAL_MODES.balanced } = {},
 ) {
-  if (!Array.isArray(timelineData) || timelineData.length < 10) return [];
+  if (!Array.isArray(timelineData) || timelineData.length < 10) {
+    return candidateKeywords.map((keyword) => ({
+      keyword,
+      qualified: false,
+      reason: "insufficient-data",
+    }));
+  }
 
   const values = timelineData.map((point) =>
     Array.isArray(point?.value) ? point.value.map(Number) : [],
@@ -210,12 +223,19 @@ export function detectEffectiveKeywords(
   const referenceLast = hasReference
     ? Number(values.at(-1)?.[0]) || 0
     : null;
-  const effective = [];
+  const evaluations = [];
 
   candidateKeywords.forEach((keyword, candidateIndex) => {
     const columnIndex = candidateIndex + (hasReference ? 1 : 0);
     const series = values.map((row) => Number(row[columnIndex]) || 0);
-    if (series.length !== values.length) return;
+    if (series.length !== values.length) {
+      evaluations.push({
+        keyword,
+        qualified: false,
+        reason: "insufficient-data",
+      });
+      return;
+    }
 
     const earlyWindowSize = Math.max(3, Math.ceil(series.length * 0.2));
     const early = series.slice(0, earlyWindowSize);
@@ -239,12 +259,57 @@ export function detectEffectiveKeywords(
         : (lastValue / referenceLast) * 100
       : lastValue;
 
-    if (materiallyGrowing && score >= Number(threshold)) {
-      effective.push(keyword);
-    }
+    const signalMet = score >= Number(threshold);
+    const normalizedMode = Object.values(SIGNAL_MODES).includes(signalMode)
+      ? signalMode
+      : SIGNAL_MODES.balanced;
+    const qualified =
+      normalizedMode === SIGNAL_MODES.demand
+        ? signalMet
+        : normalizedMode === SIGNAL_MODES.balanced
+          ? signalMet &&
+            (materiallyGrowing || score >= Math.max(100, Number(threshold) * 2))
+          : materiallyGrowing && signalMet;
+    evaluations.push({
+      keyword,
+      earlyAverage,
+      recentAverage,
+      lastValue,
+      growthRatio,
+      recentGain,
+      referenceLast,
+      score,
+      materiallyGrowing,
+      signalMet,
+      signalMode: normalizedMode,
+      qualified,
+      reason: qualified
+        ? "qualified"
+        : !signalMet
+          ? "below-signal-threshold"
+          : !materiallyGrowing
+            ? "insufficient-recent-growth"
+            : "not-qualified",
+    });
   });
 
-  return effective;
+  return evaluations;
+}
+
+export function detectEffectiveKeywords(
+  timelineData,
+  candidateKeywords,
+  threshold,
+  options = {},
+) {
+  return evaluateEffectiveKeywords(
+    timelineData,
+    candidateKeywords,
+    threshold,
+    options,
+  )
+    .filter((evaluation) => evaluation.qualified)
+    .map((evaluation) => evaluation.keyword);
 }
 
 export function extractRelatedKeywords(
@@ -314,6 +379,7 @@ export function createMiningSession(
     semanticMode = "off",
     semanticThreshold = DEFAULT_SETTINGS.semanticThreshold,
     threshold = DEFAULT_SETTINGS.threshold,
+    signalMode = DEFAULT_SETTINGS.signalMode,
   },
   now = Date.now(),
 ) {
@@ -341,6 +407,8 @@ export function createMiningSession(
     semanticRelevantKeywords: [],
     semanticRejectedKeywords: [],
     semanticScores: {},
+    semanticDiagnostics: {},
+    qualificationDiagnostics: {},
     batchesProcessed: 0,
     deepestProcessed: 0,
     processed: 0,
@@ -362,6 +430,9 @@ export function createMiningSession(
     ),
     semanticError: null,
     threshold: boundedNumber(threshold, 20, 1, 10_000),
+    signalMode: Object.values(SIGNAL_MODES).includes(signalMode)
+      ? signalMode
+      : DEFAULT_SETTINGS.signalMode,
     timeRange: DATE_OPTIONS[timeRange] === undefined ? "Past 7 Days" : timeRange,
     country: GEO_OPTIONS[country] === undefined ? "Global" : country,
     comparisonKeyword: comparison,
@@ -389,6 +460,10 @@ export function publicMiningSession(session, now = Date.now()) {
     semanticRejected:
       session.semanticRejectedKeywords?.length ?? 0,
     semanticScores: { ...(session.semanticScores ?? {}) },
+    semanticDiagnostics: { ...(session.semanticDiagnostics ?? {}) },
+    qualificationDiagnostics: {
+      ...(session.qualificationDiagnostics ?? {}),
+    },
     semanticMode: session.semanticMode ?? "off",
     semanticStatus: session.semanticStatus ?? "off",
     semanticThreshold:
@@ -401,6 +476,7 @@ export function publicMiningSession(session, now = Date.now()) {
     maxDepth: Number(session.maxDepth) || 0,
     maxKeywords: Number(session.maxKeywords) || 0,
     threshold: Number(session.threshold) || 0,
+    signalMode: session.signalMode ?? DEFAULT_SETTINGS.signalMode,
     timeRange: session.timeRange,
     country: session.country,
     comparisonKeyword: session.comparisonKeyword,
@@ -480,6 +556,8 @@ export function applyMiningObservation(
     relatedPayloads = [],
     allowedRelatedKeywords,
     semanticScores = {},
+    semanticReasons = {},
+    semanticAnchors = {},
   },
   now = Date.now(),
 ) {
@@ -495,7 +573,7 @@ export function applyMiningObservation(
       keyword.toLocaleLowerCase() ===
       String(session.referenceKeyword).toLocaleLowerCase(),
   );
-  const detectedEffective = detectEffectiveKeywords(
+  const evaluations = evaluateEffectiveKeywords(
     timelineData,
     session.currentBatch,
     session.threshold,
@@ -503,8 +581,12 @@ export function applyMiningObservation(
       hasReference:
         Boolean(session.referenceKeyword) &&
         !referenceOverlapsBatch,
+      signalMode: session.signalMode,
     },
   );
+  const detectedEffective = evaluations
+    .filter((evaluation) => evaluation.qualified)
+    .map((evaluation) => evaluation.keyword);
   const rootSet = new Set(
     session.rootKeywords.map((keyword) => keyword.toLocaleLowerCase()),
   );
@@ -553,6 +635,41 @@ export function applyMiningObservation(
     ...rejectedRelated,
   ]);
 
+  const semanticDiagnostics = {
+    ...(session.semanticDiagnostics ?? {}),
+  };
+  for (const keyword of related) {
+    const key = keyword.toLocaleLowerCase();
+    semanticDiagnostics[key] = {
+      keyword,
+      score: Number.isFinite(Number(semanticScores[key]))
+        ? Number(semanticScores[key])
+        : null,
+      anchor: Boolean(semanticAnchors[key]),
+      status: relevantRelated.some(
+        (item) => item.toLocaleLowerCase() === key,
+      )
+        ? "accepted"
+        : "rejected",
+      reason:
+        semanticReasons[key] ??
+        (relevantRelated.some(
+          (item) => item.toLocaleLowerCase() === key,
+        )
+          ? "accepted"
+          : "rejected"),
+    };
+  }
+
+  const qualificationDiagnostics = {
+    ...(session.qualificationDiagnostics ?? {}),
+  };
+  for (const evaluation of evaluations) {
+    qualificationDiagnostics[evaluation.keyword.toLocaleLowerCase()] = {
+      ...evaluation,
+    };
+  }
+
   const queued = new Set(
     [
       ...session.rootKeywords,
@@ -589,6 +706,8 @@ export function applyMiningObservation(
         ...(session.semanticScores ?? {}),
         ...semanticScores,
       },
+      semanticDiagnostics,
+      qualificationDiagnostics,
       batchesProcessed: (Number(session.batchesProcessed) || 0) + 1,
       deepestProcessed: Math.max(
         Number(session.deepestProcessed) || 0,
@@ -605,6 +724,7 @@ export function applyMiningObservation(
     addedRelevant: relevantRelated,
     rejectedSemantic: rejectedRelated,
     addedEffective: effective,
+    qualificationDiagnostics: evaluations,
     complete,
   };
 }
@@ -683,6 +803,10 @@ export function restoreMiningSession(saved, now = Date.now()) {
       saved.semanticRejectedKeywords ?? [],
     ),
     semanticScores: { ...(saved.semanticScores ?? {}) },
+    semanticDiagnostics: { ...(saved.semanticDiagnostics ?? {}) },
+    qualificationDiagnostics: {
+      ...(saved.qualificationDiagnostics ?? {}),
+    },
     semanticMode: saved.semanticMode === "local" ? "local" : "off",
     semanticStatus:
       saved.semanticMode === "local"
@@ -695,6 +819,9 @@ export function restoreMiningSession(saved, now = Date.now()) {
       1,
     ),
     semanticError: null,
+    signalMode: Object.values(SIGNAL_MODES).includes(saved.signalMode)
+      ? saved.signalMode
+      : DEFAULT_SETTINGS.signalMode,
     comparisonKeyword: comparison,
     referenceKeyword,
     referenceMode:
@@ -722,6 +849,7 @@ switch (command) {
       maxKeywords: options.max.at(-1) ?? 200,
       maxRelatedPerKeyword: options.breadth.at(-1) ?? 5,
       threshold: options.threshold.at(-1) ?? 20,
+      signalMode: options.mode.at(-1) ?? "balanced",
     });
     print(advanceSession(session));
     break;
@@ -733,6 +861,8 @@ switch (command) {
       relatedPayloads: input.relatedPayloads ?? [],
       allowedRelatedKeywords: input.allowedRelatedKeywords,
       semanticScores: input.semanticScores ?? {},
+      semanticReasons: input.semanticReasons ?? {},
+      semanticAnchors: input.semanticAnchors ?? {},
     });
     print({
       ...advanceSession(observed.session),
@@ -752,7 +882,7 @@ switch (command) {
   case "explain":
     print({
       signal:
-        "A candidate's recent average must be at least 1.5x its early average, its latest point must show material recent growth, and its latest relative signal must meet the threshold.",
+        "Balanced mode requires the relative signal threshold plus either material recent growth or a strong current signal; Emerging mode prioritizes growth, while Demand mode prioritizes current strength.",
       caveat:
         "This is a relative Google Trends signal, not search volume, ranking difficulty, traffic, or a guaranteed opportunity.",
       defaultDepth: 2,
@@ -767,7 +897,7 @@ switch (command) {
         "",
         "create  --seed <keyword> [--comparison <optional-reference>] [--country Global]",
         "        [--time \"Past 30 Days\"] [--depth 2] [--breadth 5]",
-        "        [--max 200] [--threshold 20]",
+        "        [--max 200] [--threshold 20] [--mode emerging|balanced|demand]",
         "advance --input <observation.json>  # omit --input to read stdin",
         "restore --input <session.json>      # omit --input to read stdin",
         "explain",
@@ -811,6 +941,7 @@ function parseOptions(args) {
     depth: [],
     input: [],
     max: [],
+    mode: [],
     seed: [],
     threshold: [],
     time: [],

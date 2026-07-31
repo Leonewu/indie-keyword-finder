@@ -14,6 +14,7 @@ import {
   clearAllData,
   getKeywords,
   getLanguage,
+  getLanguagePreference,
   getSettings,
   prependKeywords,
   removeKeyword,
@@ -63,6 +64,24 @@ const copy = {
     relativeSignal: "Relative signal met",
     resultContext: "Worth validating in your SEO workflow",
     topicMatch: "{score}% topic match",
+    signalMode: "Opportunity mode",
+    signalModeEmerging: "Emerging · growth first",
+    signalModeBalanced: "Balanced · demand + growth",
+    signalModeDemand: "Demand · current strength",
+    conclusionTitle: "Run conclusion",
+    conclusionRunning: "Still exploring related queries…",
+    conclusionQualified:
+      "Found {count} opportunities that match the current relevance and trend rules.",
+    conclusionNoTrend:
+      "No new word met the current trend rule. {count} related queries were relevant, but none showed enough signal.",
+    conclusionNoRelevant:
+      "No related query passed the topic filter in this run.",
+    conclusionNoCandidates:
+      "No related queries were returned for this seed and time range.",
+    relevantNotTrending: "Relevant, but not currently trending",
+    reasonBelowSignal: "Below the relative signal threshold",
+    reasonNoGrowth: "Insufficient recent growth",
+    reasonInsufficientData: "Not enough time-series data",
     semanticReady: "On-device semantic filter",
     semanticAnalyzing: "Checking topic relevance on this device…",
     semanticFallback:
@@ -129,6 +148,7 @@ const copy = {
     miningProgress:
       "{processed}/{max} processed · {batches} batches · depth {depth}/{maxDepth}",
     language: "Language",
+    languageAuto: "Automatic (browser language)",
     localOnly: "All lists and settings stay in Chrome local storage.",
     connectionReady: "Analyzer connected",
     connectionWaiting: "Connecting to analyzer…",
@@ -188,6 +208,22 @@ const copy = {
     relativeSignal: "达到相对信号阈值",
     resultContext: "建议放入 SEO 工作流继续验证",
     topicMatch: "主题匹配度 {score}%",
+    signalMode: "机会模式",
+    signalModeEmerging: "上升机会 · 优先增长",
+    signalModeBalanced: "综合模式 · 需求 + 增长",
+    signalModeDemand: "需求模式 · 优先当前热度",
+    conclusionTitle: "本次结论",
+    conclusionRunning: "正在继续探索相关查询…",
+    conclusionQualified:
+      "发现 {count} 个同时满足当前语义和趋势规则的机会词。",
+    conclusionNoTrend:
+      "没有新词达到当前趋势规则。{count} 个相关查询语义上相关，但趋势信号还不够强。",
+    conclusionNoRelevant: "本次没有相关查询通过主题过滤。",
+    conclusionNoCandidates: "在当前种子词和时间范围内没有返回相关查询。",
+    relevantNotTrending: "语义相关，但当前还没有明显上升",
+    reasonBelowSignal: "低于相对信号阈值",
+    reasonNoGrowth: "近期增长不足",
+    reasonInsufficientData: "时间序列数据不足",
     semanticReady: "本地语义筛选",
     semanticAnalyzing: "正在本机判断主题相关性…",
     semanticFallback: "语义模型不可用 · 已启用严格关键词回退",
@@ -252,6 +288,7 @@ const copy = {
     miningProgress:
       "已处理 {processed}/{max} · {batches} 批 · 深度 {depth}/{maxDepth}",
     language: "语言",
+    languageAuto: "自动（跟随浏览器语言）",
     localOnly: "所有列表和设置仅保存在 Chrome 本地存储中。",
     connectionReady: "分析器已连接",
     connectionWaiting: "正在连接分析器…",
@@ -311,6 +348,7 @@ const iconPaths = {
 const state = {
   view: "mining",
   language: "en",
+  languagePreference: "auto",
   settings: null,
   libraries: {
     custom: [],
@@ -394,6 +432,39 @@ function renderModelProgress(engine) {
     </div>
     <small title="${escapeHtml(file)}">${escapeHtml(semanticProgressText(engine))}</small>
   `;
+}
+
+function conclusionForAnalysis(analysis) {
+  const qualified = analysis.effectiveKeywords?.length ?? 0;
+  const relevant = analysis.semanticRelevant ?? 0;
+  if (["running", "paused"].includes(analysis.status)) {
+    return { key: "conclusionRunning", replacements: {} };
+  }
+  if (qualified > 0) {
+    return {
+      key: "conclusionQualified",
+      replacements: { count: qualified },
+    };
+  }
+  if (relevant > 0) {
+    return {
+      key: "conclusionNoTrend",
+      replacements: { count: relevant },
+    };
+  }
+  return {
+    key:
+      (analysis.relatedKeywords?.length ?? 0) > 0
+        ? "conclusionNoRelevant"
+        : "conclusionNoCandidates",
+    replacements: {},
+  };
+}
+
+function qualificationReasonLabel(reason) {
+  if (reason === "below-signal-threshold") return t("reasonBelowSignal");
+  if (reason === "insufficient-data") return t("reasonInsufficientData");
+  return t("reasonNoGrowth");
 }
 
 function escapeHtml(value) {
@@ -695,6 +766,19 @@ function renderAnalysisStats() {
           count: analysis.semanticRejected,
         })}`
       : "";
+  const conclusion = conclusionForAnalysis(analysis);
+  const diagnostics = Object.values(analysis.qualificationDiagnostics ?? {})
+    .filter(
+      (item) =>
+        item?.keyword &&
+        !item.qualified &&
+        item.reason &&
+        !(analysis.rootKeywords ?? []).some(
+          (root) => root.toLocaleLowerCase() === item.keyword.toLocaleLowerCase(),
+        ),
+    )
+    .slice(-5)
+    .reverse();
   return `
     <section class="centered-results">
       <header class="results-summary">
@@ -723,6 +807,10 @@ function renderAnalysisStats() {
           ? `<div class="analysis-timer"><span class="pulse"></span>${t("nextBatch", { seconds: state.nextSeconds, processed: analysis.processed ?? 0 })}</div>`
           : ""
       }
+      <div class="analysis-conclusion">
+        <span>${t("conclusionTitle")}</span>
+        <p>${t(conclusion.key, conclusion.replacements)}</p>
+      </div>
       <div class="stats-grid">
         <article><span>${t("rootKeywords")}</span><strong>${analysis.rootKeywords?.length ?? 0}</strong></article>
         <article><span>${t("relatedKeywords")}</span><strong>${analysis.relatedKeywords?.length ?? 0}</strong></article>
@@ -763,7 +851,17 @@ function renderAnalysisStats() {
                 <span class="mining-result__signal">${t("relativeSignal")}</span>
                 <button class="row-action" data-action="favorite-result" data-keyword="${escapeHtml(keyword)}" title="${t("favorite")}">${icon("star")}</button>
               </article>`).join("")}</div>`
-          : `<div class="analysis-waiting"><span></span><p>${status === "complete" ? t("emptyLibrary") : t("miningNote")}</p></div>`
+          : `<div class="analysis-waiting"><span></span><p>${status === "complete" ? t("relevantNotTrending") : t("miningNote")}</p></div>`
+      }
+      ${
+        !running && diagnostics.length > 0
+          ? `<div class="analysis-near-misses"><header><span>${t("relevantNotTrending")}</span></header>${diagnostics
+              .map(
+                (item) =>
+                  `<div class="analysis-near-miss"><strong>${escapeHtml(item.keyword)}</strong><small>${qualificationReasonLabel(item.reason)}</small></div>`,
+              )
+              .join("")}</div>`
+          : ""
       }
     </section>
   `;
@@ -829,6 +927,11 @@ function renderMining() {
           <label><span>${t("country")}</span><select data-setting="country">${Object.keys(GEO_OPTIONS).map((name) => `<option value="${name}" ${name === state.settings.country ? "selected" : ""}>${name}</option>`).join("")}</select></label>
           <label><span>${t("time")}</span><select data-setting="timeRange">${Object.keys(DATE_OPTIONS).map((name) => `<option value="${name}" ${name === state.settings.timeRange ? "selected" : ""}>${name}</option>`).join("")}</select></label>
           <label><span>${t("threshold")}</span><input data-setting="threshold" type="number" min="1" max="10000" value="${state.settings.threshold ?? 20}" /></label>
+          <label><span>${t("signalMode")}</span><select data-setting="signalMode">
+            <option value="emerging" ${state.settings.signalMode === "emerging" ? "selected" : ""}>${t("signalModeEmerging")}</option>
+            <option value="balanced" ${state.settings.signalMode === "balanced" ? "selected" : ""}>${t("signalModeBalanced")}</option>
+            <option value="demand" ${state.settings.signalMode === "demand" ? "selected" : ""}>${t("signalModeDemand")}</option>
+          </select></label>
           <label title="${t("depthHelp")}"><span>${t("depth")}</span><input data-setting="maxDepth" type="number" min="1" max="5" value="${state.settings.maxDepth ?? 2}" /></label>
         </div>
       </section>
@@ -857,6 +960,7 @@ function renderSettings() {
         <label class="field">
           <span class="field__label">${t("language")}</span>
           <select id="language-select" class="control">
+            <option value="auto" ${state.languagePreference === "auto" ? "selected" : ""}>${t("languageAuto")}</option>
             <option value="en" ${state.language === "en" ? "selected" : ""}>English</option>
             <option value="zh" ${state.language === "zh" ? "selected" : ""}>中文</option>
           </select>
@@ -1363,6 +1467,7 @@ async function handleClick(event) {
           state.settings.semanticThreshold ??
           DEFAULT_SETTINGS.semanticThreshold,
         threshold: state.settings.threshold ?? 20,
+        signalMode: state.settings.signalMode ?? DEFAULT_SETTINGS.signalMode,
       });
       toast(t("analysisStarted"));
       break;
@@ -1479,8 +1584,20 @@ async function handleInput(event) {
 
 async function handleChange(event) {
   if (event.target.id === "language-select") {
-    state.language = event.target.value === "zh" ? "zh" : "en";
-    await saveLanguage(state.language);
+    state.languagePreference = ["auto", "en", "zh"].includes(event.target.value)
+      ? event.target.value
+      : "auto";
+    state.language =
+      state.languagePreference === "auto"
+        ? await getLanguage()
+        : state.languagePreference;
+    await saveLanguage(state.languagePreference);
+    render();
+    return;
+  }
+  const setting = event.target.dataset.setting;
+  if (setting) {
+    state.settings = await saveSettings({ [setting]: event.target.value });
     render();
   }
 }
@@ -1489,6 +1606,7 @@ async function initialize() {
   await ensureDefaults();
   const [
     settings,
+    languagePreference,
     language,
     custom,
     common,
@@ -1500,6 +1618,7 @@ async function initialize() {
     localState,
   ] = await Promise.all([
     getSettings(),
+    getLanguagePreference(),
     getLanguage(),
     getKeywords("custom"),
     getKeywords("common"),
@@ -1516,6 +1635,7 @@ async function initialize() {
     ...settings,
   };
   state.language = language;
+  state.languagePreference = languagePreference;
   state.activeLibrary = settings.activeLibrary ?? "custom";
   state.libraries = {
     custom,

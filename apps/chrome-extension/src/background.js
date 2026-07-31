@@ -290,6 +290,7 @@ async function processCapturedBatch() {
   };
   logMining("Semantic filter before", {
     seedKeywords: session.rootKeywords,
+    parentKeywords: session.currentBatch,
     candidates: rawRelated,
     threshold: session.semanticThreshold,
   });
@@ -297,6 +298,7 @@ async function processCapturedBatch() {
   sendSnapshot();
   const semantic = await filterRelatedBySemantics({
     seedKeywords: session.rootKeywords,
+    parentKeywords: session.currentBatch,
     candidates: rawRelated,
     threshold: session.semanticThreshold,
   });
@@ -308,10 +310,13 @@ async function processCapturedBatch() {
   });
   logMining("Semantic filter after", {
     seedKeywords: session.rootKeywords,
+    parentKeywords: session.currentBatch,
     candidates: rawRelated,
     accepted: semantic.accepted,
     rejected: semantic.rejected,
     scores: semantic.scores,
+    reasons: semantic.reasons,
+    anchors: semantic.anchors,
     threshold: session.semanticThreshold,
   });
   session = {
@@ -333,12 +338,15 @@ async function processCapturedBatch() {
     relatedPayloads,
     allowedRelatedKeywords: semantic.accepted,
     semanticScores: semantic.scores,
+    semanticReasons: semantic.reasons,
+    semanticAnchors: semantic.anchors,
   });
   session = observed.session;
   await persistSession();
   logMining("Batch processed", {
     addedRelated: observed.addedRelated,
     addedQualified: observed.addedEffective,
+    qualificationDiagnostics: observed.qualificationDiagnostics,
     processed: session.processed ?? 0,
     queued: session.queue?.length ?? 0,
   });
@@ -377,6 +385,7 @@ async function startAnalysis(message) {
     maxDepth: message.maxDepth,
     maxKeywords: message.maxKeywords,
     signalThreshold: message.threshold,
+    signalMode: message.signalMode,
     semanticThreshold: message.semanticThreshold,
   });
   clearTimeout(nextBatchTimer);
@@ -394,6 +403,7 @@ async function startAnalysis(message) {
     semanticMode: "local",
     semanticThreshold: message.semanticThreshold,
     threshold: message.threshold,
+    signalMode: message.signalMode,
   });
   activeTrendsTabId = null;
   captured = freshCapture();

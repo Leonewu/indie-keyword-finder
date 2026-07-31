@@ -8,6 +8,7 @@ import {
   createMiningSession,
   DEFAULT_SETTINGS,
   detectEffectiveKeywords,
+  evaluateEffectiveKeywords,
   extractRelatedKeywords,
   normalizeKeywordInput,
   publicMiningSession,
@@ -142,6 +143,23 @@ test("detects material growth from a low non-zero baseline", () => {
     ),
     ["accelerating tool"],
   );
+});
+
+test("supports demand mode and explains a non-growing candidate", () => {
+  const timeline = Array.from({ length: 10 }, () => ({
+    value: [50, 20],
+  }));
+  const evaluation = evaluateEffectiveKeywords(
+    timeline,
+    ["steady tool"],
+    20,
+    { signalMode: "demand", hasReference: true },
+  )[0];
+
+  assert.equal(evaluation.qualified, true);
+  assert.equal(evaluation.reason, "qualified");
+  assert.equal(evaluation.materiallyGrowing, false);
+  assert.equal(evaluation.score, 40);
 });
 
 test("prefers rising related queries and deduplicates exclusions", () => {

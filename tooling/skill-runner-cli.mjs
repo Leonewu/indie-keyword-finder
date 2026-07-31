@@ -14,6 +14,7 @@ switch (command) {
       maxKeywords: options.max.at(-1) ?? 200,
       maxRelatedPerKeyword: options.breadth.at(-1) ?? 5,
       threshold: options.threshold.at(-1) ?? 20,
+      signalMode: options.mode.at(-1) ?? "balanced",
     });
     print(advanceSession(session));
     break;
@@ -25,6 +26,8 @@ switch (command) {
       relatedPayloads: input.relatedPayloads ?? [],
       allowedRelatedKeywords: input.allowedRelatedKeywords,
       semanticScores: input.semanticScores ?? {},
+      semanticReasons: input.semanticReasons ?? {},
+      semanticAnchors: input.semanticAnchors ?? {},
     });
     print({
       ...advanceSession(observed.session),
@@ -44,7 +47,7 @@ switch (command) {
   case "explain":
     print({
       signal:
-        "A candidate's recent average must be at least 1.5x its early average, its latest point must show material recent growth, and its latest relative signal must meet the threshold.",
+        "Balanced mode requires the relative signal threshold plus either material recent growth or a strong current signal; Emerging mode prioritizes growth, while Demand mode prioritizes current strength.",
       caveat:
         "This is a relative Google Trends signal, not search volume, ranking difficulty, traffic, or a guaranteed opportunity.",
       defaultDepth: 2,
@@ -59,7 +62,7 @@ switch (command) {
         "",
         "create  --seed <keyword> [--comparison <optional-reference>] [--country Global]",
         "        [--time \"Past 30 Days\"] [--depth 2] [--breadth 5]",
-        "        [--max 200] [--threshold 20]",
+        "        [--max 200] [--threshold 20] [--mode emerging|balanced|demand]",
         "advance --input <observation.json>  # omit --input to read stdin",
         "restore --input <session.json>      # omit --input to read stdin",
         "explain",
@@ -103,6 +106,7 @@ function parseOptions(args) {
     depth: [],
     input: [],
     max: [],
+    mode: [],
     seed: [],
     threshold: [],
     time: [],

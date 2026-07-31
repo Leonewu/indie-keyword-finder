@@ -260,10 +260,12 @@ async function embedKeywords(keywords) {
 
 export async function filterRelatedBySemantics({
   seedKeywords,
+  parentKeywords = [],
   candidates,
   threshold = DEFAULT_SEMANTIC_THRESHOLD,
 }) {
   const seeds = uniquePhrases(seedKeywords);
+  const parents = uniquePhrases(parentKeywords);
   const related = uniquePhrases(candidates);
   if (seeds.length === 0 || related.length === 0) {
     const diagnostics = await getSemanticEngineDiagnostics();
@@ -278,9 +280,9 @@ export async function filterRelatedBySemantics({
   }
 
   try {
-    const embeddings = await embedKeywords([...seeds, ...related]);
+    const embeddings = await embedKeywords([...seeds, ...parents, ...related]);
     const scores = scoreSemanticCandidates(
-      seeds,
+      [...seeds, ...parents],
       related,
       embeddings,
     );
@@ -288,6 +290,10 @@ export async function filterRelatedBySemantics({
       related,
       scores,
       threshold,
+      {
+        seedKeywords: seeds,
+        parentKeywords: parents,
+      },
     );
     return {
       ...classified,
@@ -297,9 +303,20 @@ export async function filterRelatedBySemantics({
       cacheEntries: Object.keys(await loadEmbeddingCache()).length,
     };
   } catch (error) {
-    const fallback = classifyWithLexicalFallback(seeds, related);
+    const fallback = classifyWithLexicalFallback(
+      [...seeds, ...parents],
+      related,
+    );
     return {
       ...fallback,
+      reasons: Object.fromEntries(
+        related.map((candidate) => [
+          String(candidate).trim().toLocaleLowerCase(),
+          fallback.accepted.includes(candidate)
+            ? "accepted-lexical-fallback"
+            : "missing-topic-anchor",
+        ]),
+      ),
       status: "fallback",
       error: error instanceof Error ? error.message : String(error),
     };

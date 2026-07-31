@@ -641,6 +641,59 @@ textarea:focus-visible {
   text-align: center;
 }
 
+.analysis-conclusion {
+  margin: 18px 0 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--ice-light);
+}
+
+.analysis-conclusion > span,
+.analysis-near-misses header {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.analysis-conclusion p {
+  margin: 7px 0 0;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.analysis-near-misses {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.analysis-near-misses header {
+  padding: 14px 0 8px;
+}
+
+.analysis-near-miss {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.analysis-near-miss strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.analysis-near-miss small {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}
+
 .analysis-waiting span {
   animation: breathe 1.4s ease-in-out infinite;
   border: 1px solid var(--accent);

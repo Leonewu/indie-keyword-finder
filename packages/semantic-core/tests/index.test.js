@@ -62,6 +62,22 @@ test("classifies candidates at the configured semantic threshold", () => {
   );
 });
 
+test("requires a meaningful topic anchor for medium-confidence semantic matches", () => {
+  const result = classifySemanticCandidates(
+    ["font generator", "ai itinerary generator"],
+    {
+      "font generator": 0.449,
+      "ai itinerary generator": 0.848,
+    },
+    0.32,
+    { seedKeywords: ["itinerary generator"] },
+  );
+
+  assert.deepEqual(result.accepted, ["ai itinerary generator"]);
+  assert.deepEqual(result.rejected, ["font generator"]);
+  assert.equal(result.reasons["font generator"], "missing-topic-anchor");
+});
+
 test("fallback keeps lexical topic anchors and rejects unrelated drift", () => {
   assert.deepEqual(
     classifyWithLexicalFallback(
