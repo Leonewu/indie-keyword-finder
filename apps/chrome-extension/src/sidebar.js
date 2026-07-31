@@ -32,16 +32,16 @@ const toastRegion = document.querySelector("#toast-region");
 
 const copy = {
   en: {
-    batch: "Batch",
-    roots: "Roots",
+    batch: "Compare",
     mining: "Mining",
     settings: "Settings",
-    addKeywords: "Add keywords",
+    addKeywords: "Add keywords to compare",
     addKeywordsHint: "One keyword per line",
     add: "Add",
+    compareScope: "Comparison setup",
     country: "Country / region",
     time: "Time range",
-    maxTabs: "Maximum tabs",
+    maxTabs: "Comparison tabs",
     comparison: "Reference keyword",
     comparisonHelp:
       "A relative anchor inside the same Google Trends request. It does not provide search volume.",
@@ -126,7 +126,7 @@ const copy = {
     history: "History",
     emptyLibrary: "Nothing here yet.",
     emptyMining: "Import a list or choose Edit to add seed keywords.",
-    openTrends: "Open Trends",
+    openTrends: "Compare in Google Trends",
     clear: "Clear",
     reset: "Reset position",
     edit: "Edit",
@@ -134,7 +134,6 @@ const copy = {
     cancel: "Cancel",
     importKeywords: "Import keywords",
     importFavorites: "Import favorites",
-    importRoots: "Import roots",
     start: "Start analysis",
     pause: "Pause",
     resume: "Resume",
@@ -157,7 +156,7 @@ const copy = {
     saved: "Saved",
     deleted: "Deleted",
     imported: "Imported",
-    opened: "Google Trends tabs opened",
+    opened: "Google Trends comparison tabs opened",
     noKeywords: "Add at least one keyword first.",
     comparisonRequired: "Choose a comparison keyword for mining.",
     analysisStarted: "Analysis started",
@@ -180,16 +179,16 @@ const copy = {
       "Uses Google Trends related queries and time-series signals. Keep the Trends tab open while it runs.",
   },
   zh: {
-    batch: "批量分析",
-    roots: "词根分析",
+    batch: "对比",
     mining: "新词挖掘",
     settings: "设置",
-    addKeywords: "添加关键词",
+    addKeywords: "添加待对比关键词",
     addKeywordsHint: "每行输入一个关键词",
     add: "添加",
+    compareScope: "对比范围",
     country: "国家 / 地区",
     time: "时间范围",
-    maxTabs: "最大标签数",
+    maxTabs: "对比标签数",
     comparison: "对比基准词",
     comparisonHelp: "同一次 Google Trends 请求中的相对基准，不代表搜索量。",
     keywordLimit: "关键词上限",
@@ -266,7 +265,7 @@ const copy = {
     history: "历史记录",
     emptyLibrary: "这里还没有关键词。",
     emptyMining: "请导入列表，或点击“编辑”添加种子关键词。",
-    openTrends: "打开趋势",
+    openTrends: "在 Google Trends 中对比",
     clear: "清空",
     reset: "重新开始",
     edit: "编辑",
@@ -274,7 +273,6 @@ const copy = {
     cancel: "取消",
     importKeywords: "导入关键词",
     importFavorites: "导入收藏夹",
-    importRoots: "导入词根",
     start: "开始分析",
     pause: "暂停",
     resume: "继续",
@@ -297,7 +295,7 @@ const copy = {
     saved: "已保存",
     deleted: "已删除",
     imported: "导入成功",
-    opened: "已打开 Google Trends 标签页",
+    opened: "已打开 Google Trends 对比标签页",
     noKeywords: "请先添加至少一个关键词。",
     comparisonRequired: "新词挖掘需要选择一个对比关键词。",
     analysisStarted: "分析已开始",
@@ -323,7 +321,6 @@ const copy = {
 
 const iconPaths = {
   batch: "M4 5h16M4 12h16M4 19h10",
-  roots: "M12 21V10m0 0C9 10 6 8 6 5c3 0 6 2 6 5Zm0 3c3 0 6-2 6-5-3 0-6 2-6 5Z",
   mining: "m4 16 4-4 3 3 7-8M14 7h4v4",
   settings:
     "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7.4-3.5a7.5 7.5 0 0 0-.1-1l2-1.55-2-3.46-2.47 1a8 8 0 0 0-1.73-1L14.75 3h-4l-.38 2.99a8 8 0 0 0-1.73 1L6.17 6l-2 3.46 2 1.55a7.5 7.5 0 0 0 0 2L4.17 14.55l2 3.46 2.47-1a8 8 0 0 0 1.73 1l.38 2.99h4l.38-2.99a8 8 0 0 0 1.73-1l2.47 1 2-3.46-2-1.55c.05-.33.07-.67.07-1Z",
@@ -354,13 +351,11 @@ const state = {
     custom: [],
     common: [],
     history: [],
-    roots: [],
     autoRoot: [],
     lastUsed: [],
-    rootLastUsed: [],
   },
   activeLibrary: "custom",
-  cursors: { common: 0, roots: 0 },
+  cursors: { common: 0 },
   addExpanded: true,
   batchInput: "",
   miningInput: "",
@@ -572,7 +567,6 @@ function renderHeader() {
   const tabs = [
     ["mining", "mining"],
     ["batch", "batch"],
-    ["roots", "roots"],
   ];
   return `
     <header class="app-header">
@@ -604,10 +598,7 @@ function renderKeywordRows(keywords, source, mode = "full") {
 
   return keywords
     .map((keyword, index) => {
-      const used =
-        source === "roots"
-          ? state.libraries.rootLastUsed.includes(keyword)
-          : state.libraries.lastUsed.includes(keyword);
+      const used = state.libraries.lastUsed.includes(keyword);
       const controls =
         mode === "plain"
           ? ""
@@ -637,7 +628,7 @@ function renderKeywordRows(keywords, source, mode = "full") {
                 source,
                 index,
               ),
-              source === "common" || source === "roots"
+              source === "common"
                 ? actionButton("delete", t("delete"), "trash", source, index)
                 : actionButton("favorite", t("favorite"), "star", source, index),
             ].join("");
@@ -668,7 +659,7 @@ function renderBatch() {
         }
       </div>
       <section class="section-card">
-        <div class="section-kicker"><b>02</b><span>Scope</span></div>
+        <div class="section-kicker"><b>02</b><span>${t("compareScope")}</span></div>
         ${renderControls("batch", { maxTabs: true })}
       </section>
       <section class="library-card">
@@ -712,33 +703,6 @@ function renderEditor(source) {
         <button class="button button--secondary" data-action="save-editor" data-source="${source}">${t("save")}</button>
       </div>
     </div>
-  `;
-}
-
-function renderRoots() {
-  const editing = state.editing === "roots";
-  return `
-    <section class="workspace">
-      <section class="section-card">
-        <div class="section-kicker"><b>01</b><span>Root sequence</span></div>
-        ${renderControls("roots", { maxTabs: true })}
-      </section>
-      <section class="library-card library-card--tall">
-        <div class="library-heading">
-          <span>${t("rootKeywords")} <b>${state.libraries.roots.length}</b></span>
-          ${!editing ? `<button class="text-button" data-action="edit-library" data-source="roots">${icon("edit")}${t("edit")}</button>` : ""}
-        </div>
-        <div class="keyword-list">
-          ${editing ? renderEditor("roots") : renderKeywordRows(state.libraries.roots, "roots", "compact")}
-        </div>
-        ${
-          !editing && state.cursors.roots > 0
-            ? `<div class="library-tools"><button class="text-button" data-action="reset-roots">${t("reset")}</button></div>`
-            : ""
-        }
-      </section>
-      <button class="button button--primary button--wide" data-action="open-roots">${icon("trends")}${t("openTrends")}</button>
-    </section>
   `;
 }
 
@@ -1018,7 +982,7 @@ function renderSettings() {
       </section>
       <footer class="settings-footer">
         <span>Indie Keyword Finder</span>
-        <b>v0.1.0</b>
+        <b>v0.1.1</b>
       </footer>
     </section>
   `;
@@ -1028,11 +992,9 @@ function render() {
   const content =
     state.view === "batch"
       ? renderBatch()
-      : state.view === "roots"
-        ? renderRoots()
-        : state.view === "mining"
-          ? renderMining()
-          : renderSettings();
+      : state.view === "mining"
+        ? renderMining()
+        : renderSettings();
   app.innerHTML = `${renderHeader()}<div class="app-body">${content}</div>`;
 }
 
@@ -1187,38 +1149,6 @@ async function openBatch() {
     state.settings.maxTabs,
   );
   state.libraries.lastUsed = await saveKeywords("lastUsed", used);
-  await Promise.all(urls.map(openExternal));
-  toast(t("opened"));
-  render();
-}
-
-async function openRoots() {
-  const prior = state.libraries.rootLastUsed;
-  if (prior.length > 0) {
-    state.cursors.roots += prior.length;
-  }
-  let keywords = state.libraries.roots.slice(state.cursors.roots);
-  if (keywords.length === 0 && state.cursors.roots > 0) {
-    state.cursors.roots = 0;
-    state.libraries.rootLastUsed = await saveKeywords("rootLastUsed", []);
-    await persistCursors();
-    render();
-    toast(t("noKeywords"), "error");
-    return;
-  }
-  if (keywords.length === 0) {
-    toast(t("noKeywords"), "error");
-    return;
-  }
-
-  const { urls, used } = buildBatchTrendsUrls(
-    keywords,
-    state.settings.comparisonKeyword,
-    state.settings,
-    state.settings.maxTabs,
-  );
-  state.libraries.rootLastUsed = await saveKeywords("rootLastUsed", used);
-  await persistCursors();
   await Promise.all(urls.map(openExternal));
   toast(t("opened"));
   render();
@@ -1403,15 +1333,6 @@ async function handleClick(event) {
       render();
       break;
     }
-    case "reset-roots":
-      state.cursors.roots = 0;
-      state.libraries.rootLastUsed = await saveKeywords("rootLastUsed", []);
-      await persistCursors();
-      render();
-      break;
-    case "open-roots":
-      await openRoots();
-      break;
     case "import": {
       state.libraries.autoRoot = await saveKeywords(
         "autoRoot",
@@ -1505,10 +1426,8 @@ async function handleClick(event) {
         custom: [],
         common: [],
         history: [],
-        roots: [],
         autoRoot: [],
         lastUsed: [],
-        rootLastUsed: [],
       };
       state.miningInput = "";
       state.settings = {
@@ -1611,10 +1530,8 @@ async function initialize() {
     custom,
     common,
     history,
-    roots,
     autoRoot,
     lastUsed,
-    rootLastUsed,
     localState,
   ] = await Promise.all([
     getSettings(),
@@ -1623,10 +1540,8 @@ async function initialize() {
     getKeywords("custom"),
     getKeywords("common"),
     getKeywords("history"),
-    getKeywords("roots"),
     getKeywords("autoRoot"),
     getKeywords("lastUsed"),
-    getKeywords("rootLastUsed"),
     chrome.storage.local.get(["cursors", "analysisState"]),
   ]);
 
@@ -1641,16 +1556,12 @@ async function initialize() {
     custom,
     common,
     history,
-    roots,
     autoRoot,
     lastUsed,
-    rootLastUsed,
   };
   state.miningInput = autoRoot[0] ?? "";
   state.cursors = {
-    common: 0,
-    roots: 0,
-    ...(localState.cursors ?? {}),
+    common: Number(localState.cursors?.common) || 0,
   };
   state.analysis = localState.analysisState ?? null;
   render();

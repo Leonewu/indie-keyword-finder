@@ -15,7 +15,6 @@
     ],
     historyKeywords: ["photo converter", "keyword radar"],
     language: "en",
-    rootsKeywords: ["Generator", "Converter", "Analyzer", "Tracker", "Builder"],
     autoRootKeywords: ["ai agents"],
     analysisState: {
       schemaVersion: 3,

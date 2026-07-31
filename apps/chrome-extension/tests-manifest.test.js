@@ -38,7 +38,7 @@ test("requests only the permissions used by the public release", () => {
 test("uses the approved public identity", () => {
   assert.equal(
     manifest.name,
-    "Indie Keyword Finder – Rising Keywords for SEO",
+    "Indie Keyword Finder – Google Trends Keywords",
   );
   assert.equal(manifest.short_name, "Indie Keyword Finder");
 });

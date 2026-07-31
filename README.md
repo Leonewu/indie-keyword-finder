@@ -1,29 +1,41 @@
-# Indie Keyword Finder
+# Indie Keyword Finder — Google Trends Keyword Research for SEO
 
-Discover rising search opportunities from one seed keyword.
+**Find rising keyword ideas and related queries with Google Trends for SEO research.**
 
-Indie Keyword Finder is an open-source Chrome Extension and Companion Skill for
-early keyword research. It recursively explores Google Trends related queries
-and surfaces relative signals worth validating in a broader SEO workflow.
+Indie Keyword Finder is a free, open-source Chrome extension and companion
+Skill for independent publishers, SEO practitioners, and content teams. Start
+with a seed keyword, discover related queries, filter off-topic branches
+locally, and decide which opportunities deserve deeper validation.
+
+[Get it from the Chrome Web Store](https://chromewebstore.google.com/detail/indie-keyword-finder/ncendandjjjookhbgoocaaenfipbbmgf)
+· [Report an issue](https://github.com/Leonewu/indie-keyword-finder/issues)
+
+## See it in action
+
+<p align="center">
+  <img src="docs/images/mining-results.png" alt="Indie Keyword Finder Mining screen showing qualified rising keywords" width="46%" />
+  <img src="docs/images/compare-keywords.png" alt="Indie Keyword Finder Compare screen for Google Trends keyword research" width="46%" />
+</p>
 
 It does **not** estimate monthly search volume, keyword difficulty, ranking
 probability, traffic, or revenue.
 
 ## What it includes
 
-- **Mining first:** start with a seed, expand related queries, and collect
-  candidates that satisfy a transparent relative-signal rule.
+- **Mine rising keyword ideas:** start with a seed, expand related Google Trends
+  queries, and collect candidates that satisfy a transparent relative-signal rule.
 - **On-device topic filtering:** a packaged sentence-embedding model removes
   semantically unrelated branches before recursive expansion, without an API
   key or per-query fee.
-- **Supporting research tools:** keyword lists, favorites, root sequences,
-  batch Google Trends comparisons, and small inline actions on Trends pages.
+- **Compare keyword sets:** open selected keywords in Google Trends, with an
+  optional in-request reference keyword and configurable country and time range.
 - **Local-first storage:** keywords, settings, and Mining sessions stay in
   Chrome local storage.
 - **Companion Skill:** run the same deterministic Mining state model from
   `.agents/skills/indie-keyword-finder` without installing the Extension, with
   an explicit semantic-review field for recursive expansion.
-- **English and Chinese UI:** switch languages from Settings.
+- **English and Chinese UI:** follow the browser language, with a manual
+  override in Settings.
 
 ## How Mining works
 
@@ -56,6 +68,13 @@ screen shows the current packaged-file/runtime phase, percentage, and bytes
 read; Settings also shows any exact initialization error, pinned model revision,
 runtime, execution provider, vector dimensions, initialization time, and
 bounded embedding-cache count.
+
+## What it is not
+
+Indie Keyword Finder does **not** estimate monthly search volume, keyword
+difficulty, ranking probability, traffic, or revenue. It does not promise SEO
+results. It is a Google Trends keyword discovery and validation aid, not a
+complete SEO suite.
 
 ## Install the Extension locally
 

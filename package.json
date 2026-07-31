@@ -1,9 +1,9 @@
 {
   "name": "indie-keyword-finder",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
-  "description": "Discover rising search queries from one seed keyword.",
+  "description": "Find rising keyword ideas and related queries with Google Trends for SEO research.",
   "scripts": {
     "build": "node tooling/build.mjs",
     "check": "node tooling/check.mjs",

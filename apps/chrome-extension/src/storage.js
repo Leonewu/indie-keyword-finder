@@ -1,8 +1,4 @@
-import {
-  DEFAULT_ROOT_KEYWORDS,
-  DEFAULT_SETTINGS,
-  uniqueKeywords,
-} from "./mining-core.js";
+import { DEFAULT_SETTINGS, uniqueKeywords } from "./mining-core.js";
 
 const keywordKey = (type) => `${type}Keywords`;
 
@@ -74,15 +70,11 @@ export async function saveLanguage(language) {
 
 export async function ensureDefaults() {
   const result = await chrome.storage.local.get([
-    keywordKey("roots"),
     keywordKey("common"),
     "settings",
   ]);
   const changes = {};
 
-  if (!Array.isArray(result[keywordKey("roots")])) {
-    changes[keywordKey("roots")] = [...DEFAULT_ROOT_KEYWORDS];
-  }
   if (!Array.isArray(result[keywordKey("common")])) {
     changes[keywordKey("common")] = [];
   }
@@ -101,6 +93,10 @@ export async function ensureDefaults() {
   if (Object.keys(changes).length > 0) {
     await chrome.storage.local.set(changes);
   }
+  await chrome.storage.local.remove([
+    keywordKey("roots"),
+    keywordKey("rootLastUsed"),
+  ]);
 }
 
 export async function clearAllData() {
