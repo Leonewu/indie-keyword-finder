@@ -1035,6 +1035,39 @@ textarea {
   font-weight: 600;
 }
 
+.debug-log-card {
+  display: grid;
+  gap: 10px;
+}
+
+.debug-log-card > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.debug-log-card strong {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.debug-log-card p {
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.debug-log-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.debug-log-actions .button {
+  flex: 1;
+  margin: 0;
+}
+
 .diagnostics-card dl {
   border-top: 1px solid var(--line);
   margin: 0;

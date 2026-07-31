@@ -29,6 +29,7 @@ const extensionEntries = zipEntries(
 const allowedExtensionEntries = [
   "background.js",
   "content.js",
+  "debug-log.js",
   "icons/icon.svg",
   "icons/icon128.png",
   "icons/icon16.png",

@@ -17,6 +17,7 @@ import {
 } from "./semantic-client.js";
 import { SEMANTIC_MODEL_INFO } from "./semantic-core.js";
 import { ensureDefaults } from "./storage.js";
+import { appendDebugLog, flushDebugLog } from "./debug-log.js";
 
 const ANALYSIS_STORAGE_KEY = "analysisState";
 const MIN_BATCH_DELAY_MS = 4_000;
@@ -48,6 +49,7 @@ let semanticEngineState = {
 
 function logMining(event, details = {}) {
   console.info(`${LOG_PREFIX} ${event}`, details);
+  void appendDebugLog(event, details);
 }
 
 function freshCapture() {
@@ -167,6 +169,7 @@ async function reportAnalysisError(error) {
   });
   session = failMiningSession(session, message);
   await persistSession();
+  await flushDebugLog();
   send({ type: "ANALYSIS_ERROR", error: message });
   sendSnapshot();
 }
@@ -197,6 +200,7 @@ async function completeAnalysis() {
     relatedKeywords: session.relatedKeywords?.length ?? 0,
     qualifiedKeywords: session.effectiveKeywords?.length ?? 0,
   });
+  await flushDebugLog();
   send({ type: "ANALYSIS_COMPLETE", analysis: publicMiningSession(session) });
   sendSnapshot();
 }
@@ -284,6 +288,11 @@ async function processCapturedBatch() {
     semanticStatus: "analyzing",
     semanticError: null,
   };
+  logMining("Semantic filter before", {
+    seedKeywords: session.rootKeywords,
+    candidates: rawRelated,
+    threshold: session.semanticThreshold,
+  });
   await persistSession();
   sendSnapshot();
   const semantic = await filterRelatedBySemantics({
@@ -295,6 +304,14 @@ async function processCapturedBatch() {
     accepted: semantic.accepted.length,
     rejected: semantic.rejected.length,
     status: semantic.status,
+    threshold: session.semanticThreshold,
+  });
+  logMining("Semantic filter after", {
+    seedKeywords: session.rootKeywords,
+    candidates: rawRelated,
+    accepted: semantic.accepted,
+    rejected: semantic.rejected,
+    scores: semantic.scores,
     threshold: session.semanticThreshold,
   });
   session = {

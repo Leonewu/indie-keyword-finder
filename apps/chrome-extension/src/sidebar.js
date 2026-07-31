@@ -21,6 +21,10 @@ import {
   saveLanguage,
   saveSettings,
 } from "./storage.js";
+import {
+  clearDebugLog,
+  getDebugLog,
+} from "./debug-log.js";
 
 const app = document.querySelector("#app");
 const toastRegion = document.querySelector("#toast-region");
@@ -85,6 +89,14 @@ const copy = {
     modelDimensions: "Dimensions",
     modelCache: "Cached keywords",
     modelLoadTime: "Initialization",
+    debugLogs: "Mining debug log",
+    debugLogsHelp:
+      "Export the seed, each filter's before/after keywords, batches, and errors as JSON for diagnosis.",
+    exportLogs: "Export logs",
+    clearLogs: "Clear logs",
+    logsExported: "Debug log exported",
+    logsCleared: "Debug log cleared",
+    noLogs: "No debug log entries yet.",
     queued: "Queued",
     clearData: "Clear all local data",
     clearDataHelp: "Remove saved keywords, settings, and Mining sessions from this browser.",
@@ -201,6 +213,13 @@ const copy = {
     modelDimensions: "向量维度",
     modelCache: "已缓存关键词",
     modelLoadTime: "初始化耗时",
+    debugLogs: "挖掘诊断日志",
+    debugLogsHelp: "导出种子词、每次过滤前后的关键词、批次和错误，保存为 JSON 供排查。",
+    exportLogs: "导出日志",
+    clearLogs: "清空日志",
+    logsExported: "诊断日志已导出",
+    logsCleared: "诊断日志已清空",
+    noLogs: "还没有诊断日志。",
     queued: "待分析",
     clearData: "清除全部本地数据",
     clearDataHelp: "删除这个浏览器中的关键词、设置和挖掘记录。",
@@ -876,6 +895,16 @@ function renderSettings() {
             : ""
         }
       </section>
+      <section class="section-card debug-log-card">
+        <div>
+          <strong>${t("debugLogs")}</strong>
+          <p>${t("debugLogsHelp")}</p>
+        </div>
+        <div class="debug-log-actions">
+          <button class="button button--secondary" data-action="export-debug-logs">${t("exportLogs")}</button>
+          <button class="text-button" data-action="clear-debug-logs">${t("clearLogs")}</button>
+        </div>
+      </section>
       <section class="section-card danger-zone">
         <div>
           <strong>${t("clearData")}</strong>
@@ -901,6 +930,33 @@ function render() {
           ? renderMining()
           : renderSettings();
   app.innerHTML = `${renderHeader()}<div class="app-body">${content}</div>`;
+}
+
+async function exportDebugLogs() {
+  const entries = await getDebugLog();
+  if (entries.length === 0) {
+    toast(t("noLogs"), "error");
+    return;
+  }
+  const payload = {
+    product: "Indie Keyword Finder",
+    exportedAt: new Date().toISOString(),
+    entries,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `indie-keyword-finder-debug-${new Date()
+    .toISOString()
+    .replaceAll(/[:.]/g, "-")}.json`;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  toast(t("logsExported"));
 }
 
 function renderPreservingFocusedInput() {
@@ -1357,6 +1413,13 @@ async function handleClick(event) {
       state.port?.postMessage({ type: "CLEAR_SEMANTIC_CACHE" });
       toast(t("dataCleared"));
       render();
+      break;
+    case "export-debug-logs":
+      await exportDebugLogs();
+      break;
+    case "clear-debug-logs":
+      await clearDebugLog();
+      toast(t("logsCleared"));
       break;
     case "pause-analysis":
       state.port?.postMessage({ type: "PAUSE_ANALYSIS" });
