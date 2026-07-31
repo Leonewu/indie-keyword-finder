@@ -48,8 +48,26 @@ test("Companion Skill runner uses the same first-batch contract", async () => {
   assert.equal(actual.session.status, expected.session.status);
   assert.equal(actual.session.threshold, expected.session.threshold);
   assert.equal(actual.session.maxKeywords, expected.session.maxKeywords);
+  assert.equal(actual.session.referenceKeyword, "weather");
   assert.equal(
     actual.nextUrl,
     buildTrendsUrl(["weather", "ai agents"], expected.session),
+  );
+});
+
+test("Companion Skill defaults to a seed-only Trends request", async () => {
+  const { stdout } = await execute(process.execPath, [
+    runner.pathname,
+    "create",
+    "--seed",
+    "ai agents",
+  ]);
+  const actual = JSON.parse(stdout);
+
+  assert.equal(actual.session.comparisonKeyword, "empty");
+  assert.equal(actual.session.referenceKeyword, "ai agents");
+  assert.equal(
+    new URL(actual.nextUrl).searchParams.get("q"),
+    "ai agents",
   );
 });

@@ -1,6 +1,7 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { materializeSemanticAssets } from "./semantic-assets.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const extensionSource = join(root, "apps", "chrome-extension");
@@ -28,6 +29,11 @@ await cp(
   join(root, "packages", "mining-core", "src", "index.js"),
   join(extensionOutput, "mining-core.js"),
 );
+await cp(
+  join(root, "packages", "semantic-core", "src", "index.js"),
+  join(extensionOutput, "semantic-core.js"),
+);
+await materializeSemanticAssets(extensionOutput);
 
 const manifest = JSON.parse(
   await readFile(join(extensionOutput, "manifest.json"), "utf8"),

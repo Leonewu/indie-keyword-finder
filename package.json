@@ -10,11 +10,17 @@
     "generate:skill": "node tooling/generate-skill-runner.mjs",
     "package": "node tooling/package.mjs",
     "test": "node --test",
-    "verify": "npm run check && npm test && node tooling/verify-package.mjs",
+    "test:extension": "npm run build && node tooling/check-extension-semantic-runtime.mjs",
+    "test:semantic": "npm run build && node tooling/check-semantic-runtime.mjs",
+    "test:ui": "npm run build && node tooling/check-ui-regressions.mjs",
+    "verify": "npm run check && npm test && npm run test:semantic && npm run test:ui && node tooling/verify-package.mjs",
     "prototype:interface": "node prototypes/prototype-identity-server.js"
   },
   "engines": {
     "node": ">=20"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@huggingface/transformers": "3.7.6"
+  }
 }

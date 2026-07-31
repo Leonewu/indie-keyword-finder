@@ -46,19 +46,37 @@ export async function saveSettings(patch) {
   return settings;
 }
 
-export async function getLanguage() {
+export async function getLanguagePreference() {
   const result = await chrome.storage.local.get("language");
-  return result.language === "zh" ? "zh" : "en";
+  if (result.language === "zh" || result.language === "en") {
+    return result.language;
+  }
+  return "auto";
+}
+
+export async function getLanguage() {
+  const preference = await getLanguagePreference();
+  if (preference !== "auto") return preference;
+  const browserLanguage =
+    typeof navigator !== "undefined" ? String(navigator.language ?? "") : "";
+  return browserLanguage.toLocaleLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
 export async function saveLanguage(language) {
-  await chrome.storage.local.set({ language: language === "zh" ? "zh" : "en" });
+  if (language === "auto") {
+    await chrome.storage.local.remove("language");
+    return;
+  }
+  await chrome.storage.local.set({
+    language: language === "zh" ? "zh" : "en",
+  });
 }
 
 export async function ensureDefaults() {
   const result = await chrome.storage.local.get([
     keywordKey("roots"),
     keywordKey("common"),
+    "settings",
   ]);
   const changes = {};
 
@@ -67,6 +85,18 @@ export async function ensureDefaults() {
   }
   if (!Array.isArray(result[keywordKey("common")])) {
     changes[keywordKey("common")] = [];
+  }
+  if (
+    !result.settings ||
+    result.settings.settingsSchemaVersion !==
+      DEFAULT_SETTINGS.settingsSchemaVersion
+  ) {
+    changes.settings = {
+      ...DEFAULT_SETTINGS,
+      ...(result.settings ?? {}),
+      comparisonKeyword: DEFAULT_SETTINGS.comparisonKeyword,
+      settingsSchemaVersion: DEFAULT_SETTINGS.settingsSchemaVersion,
+    };
   }
   if (Object.keys(changes).length > 0) {
     await chrome.storage.local.set(changes);

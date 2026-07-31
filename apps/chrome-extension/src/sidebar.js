@@ -1,6 +1,7 @@
 import {
   COMPARISON_KEYWORDS,
   DATE_OPTIONS,
+  DEFAULT_SETTINGS,
   GEO_OPTIONS,
   buildBatchTrendsUrls,
   buildTrendsUrl,
@@ -13,6 +14,7 @@ import {
   clearAllData,
   getKeywords,
   getLanguage,
+  getLanguagePreference,
   getSettings,
   prependKeywords,
   removeKeyword,
@@ -20,6 +22,10 @@ import {
   saveLanguage,
   saveSettings,
 } from "./storage.js";
+import {
+  clearDebugLog,
+  getDebugLog,
+} from "./debug-log.js";
 
 const app = document.querySelector("#app");
 const toastRegion = document.querySelector("#toast-region");
@@ -42,7 +48,10 @@ const copy = {
     keywordLimit: "Keyword limit",
     threshold: "Signal threshold",
     thresholdHelp:
-      "A candidate qualifies when its latest relative Trends signal reaches this percentage of the reference keyword.",
+      "A candidate must grow materially from its early baseline and reach this relative signal.",
+    depth: "Depth",
+    depthHelp:
+      "How many related-query generations Mining may process after the seed.",
     seedKeyword: "Seed keyword",
     seedPlaceholder: "e.g. ai agents",
     discover: "Discover",
@@ -54,6 +63,59 @@ const copy = {
     ready: "Ready",
     relativeSignal: "Relative signal met",
     resultContext: "Worth validating in your SEO workflow",
+    topicMatch: "{score}% topic match",
+    signalMode: "Opportunity mode",
+    signalModeEmerging: "Emerging · growth first",
+    signalModeBalanced: "Balanced · demand + growth",
+    signalModeDemand: "Demand · current strength",
+    conclusionTitle: "Run conclusion",
+    conclusionRunning: "Still exploring related queries…",
+    conclusionQualified:
+      "Found {count} opportunities that match the current relevance and trend rules.",
+    conclusionNoTrend:
+      "No new word met the current trend rule. {count} related queries were relevant, but none showed enough signal.",
+    conclusionNoRelevant:
+      "No related query passed the topic filter in this run.",
+    conclusionNoCandidates:
+      "No related queries were returned for this seed and time range.",
+    relevantNotTrending: "Relevant, but not currently trending",
+    reasonBelowSignal: "Below the relative signal threshold",
+    reasonNoGrowth: "Insufficient recent growth",
+    reasonInsufficientData: "Not enough time-series data",
+    semanticReady: "On-device semantic filter",
+    semanticAnalyzing: "Checking topic relevance on this device…",
+    semanticFallback:
+      "Semantic model unavailable · strict keyword fallback active",
+    semanticRemoved: "{count} off-topic related queries removed",
+    modelLoading: "Loading local semantic model…",
+    modelLoadingButton: "Loading model…",
+    modelUnavailable: "Local semantic model unavailable",
+    modelUnavailableButton: "Model unavailable",
+    modelReady: "Local semantic model ready",
+    retryModel: "Retry model",
+    modelBundled: "Bundled in the extension · no network download",
+    modelPhasePreparing: "Preparing local runtime",
+    modelPhaseReadingFiles: "Reading packaged model files",
+    modelPhaseReadingModel: "Reading packaged ONNX model",
+    modelPhaseInitializingRuntime: "Starting WASM runtime",
+    modelPhaseReady: "Ready",
+    modelErrorDetail: "Technical detail",
+    semanticDiagnostics: "Semantic engine",
+    model: "Model",
+    modelRevision: "Revision",
+    modelRuntime: "Runtime",
+    modelExecution: "Execution",
+    modelDimensions: "Dimensions",
+    modelCache: "Cached keywords",
+    modelLoadTime: "Initialization",
+    debugLogs: "Mining debug log",
+    debugLogsHelp:
+      "Export the seed, each filter's before/after keywords, batches, and errors as JSON for diagnosis.",
+    exportLogs: "Export logs",
+    clearLogs: "Clear logs",
+    logsExported: "Debug log exported",
+    logsCleared: "Debug log cleared",
+    noLogs: "No debug log entries yet.",
     queued: "Queued",
     clearData: "Clear all local data",
     clearDataHelp: "Remove saved keywords, settings, and Mining sessions from this browser.",
@@ -83,7 +145,10 @@ const copy = {
     newKeywords: "New words",
     results: "Qualified new words",
     nextBatch: "Next batch in {seconds}s · {processed} processed",
+    miningProgress:
+      "{processed}/{max} processed · {batches} batches · depth {depth}/{maxDepth}",
     language: "Language",
+    languageAuto: "Automatic (browser language)",
     localOnly: "All lists and settings stay in Chrome local storage.",
     connectionReady: "Analyzer connected",
     connectionWaiting: "Connecting to analyzer…",
@@ -129,7 +194,9 @@ const copy = {
     comparisonHelp: "同一次 Google Trends 请求中的相对基准，不代表搜索量。",
     keywordLimit: "关键词上限",
     threshold: "有效词阈值",
-    thresholdHelp: "候选词最新趋势值达到对比词的此百分比时，判定为有效新词。",
+    thresholdHelp: "候选词需从早期低位明显增长，并达到此相对信号阈值。",
+    depth: "递归深度",
+    depthHelp: "种子词之后最多继续处理多少代相关查询。",
     seedKeyword: "种子关键词",
     seedPlaceholder: "例如：ai agents",
     discover: "开始发现",
@@ -140,6 +207,55 @@ const copy = {
     ready: "就绪",
     relativeSignal: "达到相对信号阈值",
     resultContext: "建议放入 SEO 工作流继续验证",
+    topicMatch: "主题匹配度 {score}%",
+    signalMode: "机会模式",
+    signalModeEmerging: "上升机会 · 优先增长",
+    signalModeBalanced: "综合模式 · 需求 + 增长",
+    signalModeDemand: "需求模式 · 优先当前热度",
+    conclusionTitle: "本次结论",
+    conclusionRunning: "正在继续探索相关查询…",
+    conclusionQualified:
+      "发现 {count} 个同时满足当前语义和趋势规则的机会词。",
+    conclusionNoTrend:
+      "没有新词达到当前趋势规则。{count} 个相关查询语义上相关，但趋势信号还不够强。",
+    conclusionNoRelevant: "本次没有相关查询通过主题过滤。",
+    conclusionNoCandidates: "在当前种子词和时间范围内没有返回相关查询。",
+    relevantNotTrending: "语义相关，但当前还没有明显上升",
+    reasonBelowSignal: "低于相对信号阈值",
+    reasonNoGrowth: "近期增长不足",
+    reasonInsufficientData: "时间序列数据不足",
+    semanticReady: "本地语义筛选",
+    semanticAnalyzing: "正在本机判断主题相关性…",
+    semanticFallback: "语义模型不可用 · 已启用严格关键词回退",
+    semanticRemoved: "已过滤 {count} 个偏题相关查询",
+    modelLoading: "正在加载本地语义模型…",
+    modelLoadingButton: "加载模型中…",
+    modelUnavailable: "本地语义模型不可用",
+    modelUnavailableButton: "模型不可用",
+    modelReady: "本地语义模型已就绪",
+    retryModel: "重新加载模型",
+    modelBundled: "模型已内置在扩展中 · 不会发起网络下载",
+    modelPhasePreparing: "准备本地运行环境",
+    modelPhaseReadingFiles: "读取扩展内模型文件",
+    modelPhaseReadingModel: "读取扩展内 ONNX 模型",
+    modelPhaseInitializingRuntime: "启动 WASM 运行环境",
+    modelPhaseReady: "已就绪",
+    modelErrorDetail: "技术详情",
+    semanticDiagnostics: "语义引擎",
+    model: "模型",
+    modelRevision: "版本",
+    modelRuntime: "运行库",
+    modelExecution: "执行方式",
+    modelDimensions: "向量维度",
+    modelCache: "已缓存关键词",
+    modelLoadTime: "初始化耗时",
+    debugLogs: "挖掘诊断日志",
+    debugLogsHelp: "导出种子词、每次过滤前后的关键词、批次和错误，保存为 JSON 供排查。",
+    exportLogs: "导出日志",
+    clearLogs: "清空日志",
+    logsExported: "诊断日志已导出",
+    logsCleared: "诊断日志已清空",
+    noLogs: "还没有诊断日志。",
     queued: "待分析",
     clearData: "清除全部本地数据",
     clearDataHelp: "删除这个浏览器中的关键词、设置和挖掘记录。",
@@ -169,7 +285,10 @@ const copy = {
     newKeywords: "有效新词",
     results: "有效新词列表",
     nextBatch: "下一批 {seconds} 秒后开始 · 已分析 {processed} 个",
+    miningProgress:
+      "已处理 {processed}/{max} · {batches} 批 · 深度 {depth}/{maxDepth}",
     language: "语言",
+    languageAuto: "自动（跟随浏览器语言）",
     localOnly: "所有列表和设置仅保存在 Chrome 本地存储中。",
     connectionReady: "分析器已连接",
     connectionWaiting: "正在连接分析器…",
@@ -229,6 +348,7 @@ const iconPaths = {
 const state = {
   view: "mining",
   language: "en",
+  languagePreference: "auto",
   settings: null,
   libraries: {
     custom: [],
@@ -252,6 +372,15 @@ const state = {
   reconnectTimer: null,
   heartbeatTimer: null,
   analysis: null,
+  semanticEngine: {
+    status: "loading",
+    loaded: false,
+    cacheEntries: 0,
+    progress: {
+      phase: "preparing",
+      percent: 0,
+    },
+  },
   nextSeconds: null,
   countdownTimer: null,
 };
@@ -262,6 +391,80 @@ function t(key, replacements = {}) {
     value = value.replace(`{${name}}`, String(replacement));
   }
   return value;
+}
+
+function semanticProgressText(engine) {
+  const phases = {
+    preparing: "modelPhasePreparing",
+    "reading-files": "modelPhaseReadingFiles",
+    "reading-model": "modelPhaseReadingModel",
+    "initializing-runtime": "modelPhaseInitializingRuntime",
+    ready: "modelPhaseReady",
+  };
+  const progress = engine.progress ?? {};
+  const phase = t(phases[progress.phase] ?? "modelPhasePreparing");
+  const percent = Math.max(
+    0,
+    Math.min(100, Math.round(Number(progress.percent) || 0)),
+  );
+  const loaded = Number(progress.loadedBytes);
+  const total = Number(progress.totalBytes);
+  const bytes =
+    loaded > 0 && total > 0
+      ? ` · ${formatMegabytes(loaded)}/${formatMegabytes(total)}`
+      : "";
+  return `${phase} · ${percent}%${bytes}`;
+}
+
+function formatMegabytes(bytes) {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function renderModelProgress(engine) {
+  const percent = Math.max(
+    0,
+    Math.min(100, Math.round(Number(engine.progress?.percent) || 0)),
+  );
+  const file = String(engine.progress?.file ?? "").split("/").at(-1);
+  return `
+    <div class="model-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
+      <span style="width: ${percent}%"></span>
+    </div>
+    <small title="${escapeHtml(file)}">${escapeHtml(semanticProgressText(engine))}</small>
+  `;
+}
+
+function conclusionForAnalysis(analysis) {
+  const qualified = analysis.effectiveKeywords?.length ?? 0;
+  const relevant = analysis.semanticRelevant ?? 0;
+  if (["running", "paused"].includes(analysis.status)) {
+    return { key: "conclusionRunning", replacements: {} };
+  }
+  if (qualified > 0) {
+    return {
+      key: "conclusionQualified",
+      replacements: { count: qualified },
+    };
+  }
+  if (relevant > 0) {
+    return {
+      key: "conclusionNoTrend",
+      replacements: { count: relevant },
+    };
+  }
+  return {
+    key:
+      (analysis.relatedKeywords?.length ?? 0) > 0
+        ? "conclusionNoRelevant"
+        : "conclusionNoCandidates",
+    replacements: {},
+  };
+}
+
+function qualificationReasonLabel(reason) {
+  if (reason === "below-signal-threshold") return t("reasonBelowSignal");
+  if (reason === "insufficient-data") return t("reasonInsufficientData");
+  return t("reasonNoGrowth");
 }
 
 function escapeHtml(value) {
@@ -551,6 +754,31 @@ function renderAnalysisStats() {
   }
   const status = analysis.status;
   const running = ["running", "paused"].includes(analysis.status);
+  const semanticLabel =
+    analysis.semanticStatus === "analyzing"
+      ? t("semanticAnalyzing")
+      : analysis.semanticStatus === "fallback"
+        ? t("semanticFallback")
+        : t("semanticReady");
+  const semanticRemoved =
+    analysis.semanticRejected > 0
+      ? ` · ${t("semanticRemoved", {
+          count: analysis.semanticRejected,
+        })}`
+      : "";
+  const conclusion = conclusionForAnalysis(analysis);
+  const diagnostics = Object.values(analysis.qualificationDiagnostics ?? {})
+    .filter(
+      (item) =>
+        item?.keyword &&
+        !item.qualified &&
+        item.reason &&
+        !(analysis.rootKeywords ?? []).some(
+          (root) => root.toLocaleLowerCase() === item.keyword.toLocaleLowerCase(),
+        ),
+    )
+    .slice(-5)
+    .reverse();
   return `
     <section class="centered-results">
       <header class="results-summary">
@@ -558,13 +786,31 @@ function renderAnalysisStats() {
           <span>${t("results")}</span>
           <strong>${analysis.effectiveKeywords?.length ?? 0} ${t("newKeywords")}</strong>
         </div>
-        <small>${analysis.relatedKeywords?.length ?? 0} ${t("relatedKeywords")} · ${analysis.queued ?? 0} ${t("queued")}</small>
+        <small>${t("miningProgress", {
+          processed: analysis.processed ?? 0,
+          max: analysis.maxKeywords ?? 0,
+          batches: analysis.batchesProcessed ?? 0,
+          depth:
+            analysis.currentDepth ??
+            analysis.deepestProcessed ??
+            0,
+          maxDepth: analysis.maxDepth ?? 0,
+        })}</small>
       </header>
+      ${
+        analysis.semanticMode === "local"
+          ? `<div class="semantic-status semantic-status--${analysis.semanticStatus ?? "waiting"}"><span></span><strong>${semanticLabel}</strong>${semanticRemoved}</div>`
+          : ""
+      }
       ${
         running && state.nextSeconds != null
           ? `<div class="analysis-timer"><span class="pulse"></span>${t("nextBatch", { seconds: state.nextSeconds, processed: analysis.processed ?? 0 })}</div>`
           : ""
       }
+      <div class="analysis-conclusion">
+        <span>${t("conclusionTitle")}</span>
+        <p>${t(conclusion.key, conclusion.replacements)}</p>
+      </div>
       <div class="stats-grid">
         <article><span>${t("rootKeywords")}</span><strong>${analysis.rootKeywords?.length ?? 0}</strong></article>
         <article><span>${t("relatedKeywords")}</span><strong>${analysis.relatedKeywords?.length ?? 0}</strong></article>
@@ -582,12 +828,40 @@ function renderAnalysisStats() {
                 <span class="mining-result__index">${String(index + 1).padStart(2, "0")}</span>
                 <button data-action="copy-result" data-keyword="${escapeHtml(keyword)}">
                   <strong>${escapeHtml(keyword)}</strong>
-                  <small>${t("resultContext")}</small>
+                  <small>${t("resultContext")}${
+                    Number.isFinite(
+                      Number(
+                        analysis.semanticScores?.[
+                          keyword.toLocaleLowerCase()
+                        ],
+                      ),
+                    )
+                      ? ` · ${t("topicMatch", {
+                          score: Math.round(
+                            Number(
+                              analysis.semanticScores[
+                                keyword.toLocaleLowerCase()
+                              ],
+                            ) * 100,
+                          ),
+                        })}`
+                      : ""
+                  }</small>
                 </button>
                 <span class="mining-result__signal">${t("relativeSignal")}</span>
                 <button class="row-action" data-action="favorite-result" data-keyword="${escapeHtml(keyword)}" title="${t("favorite")}">${icon("star")}</button>
               </article>`).join("")}</div>`
-          : `<div class="analysis-waiting"><span></span><p>${status === "complete" ? t("emptyLibrary") : t("miningNote")}</p></div>`
+          : `<div class="analysis-waiting"><span></span><p>${status === "complete" ? t("relevantNotTrending") : t("miningNote")}</p></div>`
+      }
+      ${
+        !running && diagnostics.length > 0
+          ? `<div class="analysis-near-misses"><header><span>${t("relevantNotTrending")}</span></header>${diagnostics
+              .map(
+                (item) =>
+                  `<div class="analysis-near-miss"><strong>${escapeHtml(item.keyword)}</strong><small>${qualificationReasonLabel(item.reason)}</small></div>`,
+              )
+              .join("")}</div>`
+          : ""
       }
     </section>
   `;
@@ -596,10 +870,25 @@ function renderAnalysisStats() {
 function renderMining() {
   const status = state.analysis?.status;
   const active = ["running", "paused"].includes(status);
+  const modelReady =
+    state.semanticEngine.status === "ready" &&
+    state.semanticEngine.loaded === true;
+  const modelStatusLabel =
+    state.semanticEngine.status === "error"
+      ? t("modelUnavailable")
+      : modelReady
+        ? t("modelReady")
+        : t("modelLoading");
+  const discoverLabel =
+    state.semanticEngine.status === "error"
+      ? t("modelUnavailableButton")
+      : modelReady
+        ? t("discover")
+        : `${t("modelLoadingButton")} ${Math.round(Number(state.semanticEngine.progress?.percent) || 0)}%`;
   return `
     <section class="workspace workspace--scroll mining-workspace">
       <section class="centered-hero">
-        <span class="prototype-kicker">Mining · ${state.connected ? t("ready") : t("connectionWaiting")}</span>
+        <span class="prototype-kicker">Mining · ${state.connected ? modelStatusLabel : t("connectionWaiting")}</span>
         <h1>${t("productPromise")}</h1>
         <p>${t("productDetail")}</p>
         <div class="seed-composer">
@@ -609,14 +898,41 @@ function renderMining() {
           </label>
           ${
             !active
-              ? `<button class="button button--primary" data-action="start-analysis">${t("discover")}${icon("play")}</button>`
+              ? `<button class="button button--primary" data-action="start-analysis" ${modelReady && state.connected ? "" : "disabled"}>${discoverLabel}${modelReady ? icon("play") : ""}</button>`
               : `<button class="button button--secondary" data-action="${status === "paused" ? "resume-analysis" : "pause-analysis"}">${icon(status === "paused" ? "play" : "pause")}${t(status === "paused" ? "resume" : "pause")}</button>`
+          }
+        </div>
+        <div class="model-readiness model-readiness--${state.semanticEngine.status}">
+          <div class="model-readiness__status">
+            <span class="model-readiness__dot"></span>
+            <strong>${modelStatusLabel}</strong>
+            ${
+              state.semanticEngine.status === "error"
+                ? `<button class="text-button" data-action="retry-semantic-engine">${t("retryModel")}</button>`
+                : ""
+            }
+          </div>
+          ${
+            state.semanticEngine.status === "loading"
+              ? `${renderModelProgress(state.semanticEngine)}<small>${t("modelBundled")}</small>`
+              : ""
+          }
+          ${
+            state.semanticEngine.status === "error" && state.semanticEngine.error
+              ? `<small class="model-error"><strong>${t("modelErrorDetail")}:</strong> ${escapeHtml(state.semanticEngine.error)}</small>`
+              : ""
           }
         </div>
         <div class="model-chips">
           <label><span>${t("country")}</span><select data-setting="country">${Object.keys(GEO_OPTIONS).map((name) => `<option value="${name}" ${name === state.settings.country ? "selected" : ""}>${name}</option>`).join("")}</select></label>
           <label><span>${t("time")}</span><select data-setting="timeRange">${Object.keys(DATE_OPTIONS).map((name) => `<option value="${name}" ${name === state.settings.timeRange ? "selected" : ""}>${name}</option>`).join("")}</select></label>
           <label><span>${t("threshold")}</span><input data-setting="threshold" type="number" min="1" max="10000" value="${state.settings.threshold ?? 20}" /></label>
+          <label><span>${t("signalMode")}</span><select data-setting="signalMode">
+            <option value="emerging" ${state.settings.signalMode === "emerging" ? "selected" : ""}>${t("signalModeEmerging")}</option>
+            <option value="balanced" ${state.settings.signalMode === "balanced" ? "selected" : ""}>${t("signalModeBalanced")}</option>
+            <option value="demand" ${state.settings.signalMode === "demand" ? "selected" : ""}>${t("signalModeDemand")}</option>
+          </select></label>
+          <label title="${t("depthHelp")}"><span>${t("depth")}</span><input data-setting="maxDepth" type="number" min="1" max="5" value="${state.settings.maxDepth ?? 2}" /></label>
         </div>
       </section>
       ${active ? `<div class="analysis-actions analysis-actions--compact"><button class="text-button text-button--danger" data-action="stop-analysis">${icon("stop")}${t("stop")}</button></div>` : ""}
@@ -626,6 +942,13 @@ function renderMining() {
 }
 
 function renderSettings() {
+  const engine = state.semanticEngine;
+  const engineStatus =
+    engine.status === "error"
+      ? t("modelUnavailable")
+      : engine.status === "ready" && engine.loaded
+        ? t("modelReady")
+        : t("modelLoading");
   return `
     <section class="workspace settings-view">
       <div class="settings-hero">
@@ -637,10 +960,54 @@ function renderSettings() {
         <label class="field">
           <span class="field__label">${t("language")}</span>
           <select id="language-select" class="control">
+            <option value="auto" ${state.languagePreference === "auto" ? "selected" : ""}>${t("languageAuto")}</option>
             <option value="en" ${state.language === "en" ? "selected" : ""}>English</option>
             <option value="zh" ${state.language === "zh" ? "selected" : ""}>中文</option>
           </select>
         </label>
+      </section>
+      <section class="section-card diagnostics-card">
+        <header>
+          <div>
+            <strong>${t("semanticDiagnostics")}</strong>
+            <p>${engineStatus}</p>
+          </div>
+          <span class="diagnostic-status diagnostic-status--${engine.status}"></span>
+        </header>
+        ${
+          engine.status === "loading"
+            ? `<div class="diagnostics-progress">${renderModelProgress(engine)}<small>${t("modelBundled")}</small></div>`
+            : ""
+        }
+        ${
+          engine.status === "error" && engine.error
+            ? `<p class="diagnostics-error"><strong>${t("modelErrorDetail")}:</strong> ${escapeHtml(engine.error)}</p>`
+            : ""
+        }
+        <dl>
+          <div><dt>${t("model")}</dt><dd>${escapeHtml(engine.name ?? "—")} · ${escapeHtml(engine.quantization ?? "—")}</dd></div>
+          <div><dt>${t("modelRevision")}</dt><dd title="${escapeHtml(engine.revision ?? "")}">${escapeHtml(engine.revision?.slice(0, 7) ?? "—")}</dd></div>
+          <div><dt>${t("modelRuntime")}</dt><dd>${escapeHtml(engine.runtime ?? "—")}</dd></div>
+          <div><dt>${t("modelExecution")}</dt><dd>${escapeHtml(engine.executionProvider ?? "—")}</dd></div>
+          <div><dt>${t("modelDimensions")}</dt><dd>${engine.dimensions ?? "—"}</dd></div>
+          <div><dt>${t("modelCache")}</dt><dd>${engine.cacheEntries ?? 0}</dd></div>
+          <div><dt>${t("modelLoadTime")}</dt><dd>${Number.isFinite(Number(engine.initializationMs)) ? `${engine.initializationMs} ms` : "—"}</dd></div>
+        </dl>
+        ${
+          engine.status === "error"
+            ? `<button class="button button--secondary button--wide" data-action="retry-semantic-engine">${t("retryModel")}</button>`
+            : ""
+        }
+      </section>
+      <section class="section-card debug-log-card">
+        <div>
+          <strong>${t("debugLogs")}</strong>
+          <p>${t("debugLogsHelp")}</p>
+        </div>
+        <div class="debug-log-actions">
+          <button class="button button--secondary" data-action="export-debug-logs">${t("exportLogs")}</button>
+          <button class="text-button" data-action="clear-debug-logs">${t("clearLogs")}</button>
+        </div>
       </section>
       <section class="section-card danger-zone">
         <div>
@@ -667,6 +1034,52 @@ function render() {
           ? renderMining()
           : renderSettings();
   app.innerHTML = `${renderHeader()}<div class="app-body">${content}</div>`;
+}
+
+async function exportDebugLogs() {
+  const entries = await getDebugLog();
+  if (entries.length === 0) {
+    toast(t("noLogs"), "error");
+    return;
+  }
+  const payload = {
+    product: "Indie Keyword Finder",
+    exportedAt: new Date().toISOString(),
+    entries,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `indie-keyword-finder-debug-${new Date()
+    .toISOString()
+    .replaceAll(/[:.]/g, "-")}.json`;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  toast(t("logsExported"));
+}
+
+function renderPreservingFocusedInput() {
+  const active = document.activeElement;
+  const id = active?.id;
+  const selectionStart = active?.selectionStart;
+  const selectionEnd = active?.selectionEnd;
+  render();
+  if (!id) return;
+  const replacement = document.getElementById(id);
+  if (!replacement || replacement.disabled) return;
+  replacement.focus();
+  if (
+    Number.isFinite(selectionStart) &&
+    Number.isFinite(selectionEnd) &&
+    typeof replacement.setSelectionRange === "function"
+  ) {
+    replacement.setSelectionRange(selectionStart, selectionEnd);
+  }
 }
 
 async function persistCursors() {
@@ -834,7 +1247,10 @@ function connectAnalyzer() {
 
     port.onMessage.addListener((message) => {
       if (message.type === "PONG") {
+        const wasConnected = state.connected;
         state.connected = true;
+        if (!wasConnected) render();
+        return;
       } else if (message.type === "ANALYSIS_SNAPSHOT") {
         state.analysis = message.analysis;
       } else if (message.type === "ANALYSIS_UPDATE") {
@@ -853,6 +1269,10 @@ function connectAnalyzer() {
         toast(t("analysisStopped"));
       } else if (message.type === "ANALYSIS_ERROR") {
         toast(message.error, "error");
+      } else if (message.type === "SEMANTIC_ENGINE_STATUS") {
+        state.semanticEngine = message.semanticEngine;
+        renderPreservingFocusedInput();
+        return;
       }
       render();
     });
@@ -860,6 +1280,11 @@ function connectAnalyzer() {
     port.onDisconnect.addListener(() => {
       state.connected = false;
       state.port = null;
+      state.semanticEngine = {
+        ...state.semanticEngine,
+        status: "loading",
+        loaded: false,
+      };
       clearInterval(state.heartbeatTimer);
       render();
       clearTimeout(state.reconnectTimer);
@@ -1000,6 +1425,18 @@ async function handleClick(event) {
       break;
     }
     case "start-analysis":
+      if (
+        state.semanticEngine.status !== "ready" ||
+        !state.semanticEngine.loaded
+      ) {
+        toast(
+          state.semanticEngine.status === "error"
+            ? t("modelUnavailable")
+            : t("modelLoading"),
+          "error",
+        );
+        return;
+      }
       if (!state.connected || !state.port) {
         toast(t("noConnection"), "error");
         return;
@@ -1016,23 +1453,37 @@ async function handleClick(event) {
         toast(t("noKeywords"), "error");
         return;
       }
-      if (
-        !state.settings.comparisonKeyword ||
-        state.settings.comparisonKeyword === "empty"
-      ) {
-        toast(t("comparisonRequired"), "error");
-        return;
-      }
       state.port.postMessage({
         type: "START_ANALYSIS",
         keywords: state.libraries.autoRoot,
-        comparisonKeyword: state.settings.comparisonKeyword,
+        comparisonKeyword: "empty",
         timeRange: state.settings.timeRange,
         country: state.settings.country,
+        maxDepth: state.settings.maxDepth ?? 2,
         maxKeywords: state.settings.maxKeywords ?? 200,
+        maxRelatedPerKeyword:
+          state.settings.maxRelatedPerKeyword ?? 5,
+        semanticThreshold:
+          state.settings.semanticThreshold ??
+          DEFAULT_SETTINGS.semanticThreshold,
         threshold: state.settings.threshold ?? 20,
+        signalMode: state.settings.signalMode ?? DEFAULT_SETTINGS.signalMode,
       });
       toast(t("analysisStarted"));
+      break;
+    case "retry-semantic-engine":
+      state.semanticEngine = {
+        ...state.semanticEngine,
+        status: "loading",
+        loaded: false,
+        progress: {
+          phase: "preparing",
+          percent: 0,
+        },
+        error: null,
+      };
+      state.port?.postMessage({ type: "RETRY_SEMANTIC_ENGINE" });
+      render();
       break;
     case "copy-result":
       await navigator.clipboard.writeText(target.dataset.keyword ?? "");
@@ -1060,9 +1511,20 @@ async function handleClick(event) {
         rootLastUsed: [],
       };
       state.miningInput = "";
-      state.settings = { maxKeywords: 200, threshold: 20, ...(await getSettings()) };
+      state.settings = {
+        ...DEFAULT_SETTINGS,
+        ...(await getSettings()),
+      };
+      state.port?.postMessage({ type: "CLEAR_SEMANTIC_CACHE" });
       toast(t("dataCleared"));
       render();
+      break;
+    case "export-debug-logs":
+      await exportDebugLogs();
+      break;
+    case "clear-debug-logs":
+      await clearDebugLog();
+      toast(t("logsCleared"));
       break;
     case "pause-analysis":
       state.port?.postMessage({ type: "PAUSE_ANALYSIS" });
@@ -1110,7 +1572,11 @@ async function handleInput(event) {
   const setting = event.target.dataset.setting;
   if (!setting) return;
   let value = event.target.value;
-  if (["maxTabs", "maxKeywords", "threshold"].includes(setting)) {
+  if (
+    ["maxTabs", "maxDepth", "maxKeywords", "threshold"].includes(
+      setting,
+    )
+  ) {
     value = Math.max(1, Number(value) || 1);
   }
   state.settings = await saveSettings({ [setting]: value });
@@ -1118,8 +1584,20 @@ async function handleInput(event) {
 
 async function handleChange(event) {
   if (event.target.id === "language-select") {
-    state.language = event.target.value === "zh" ? "zh" : "en";
-    await saveLanguage(state.language);
+    state.languagePreference = ["auto", "en", "zh"].includes(event.target.value)
+      ? event.target.value
+      : "auto";
+    state.language =
+      state.languagePreference === "auto"
+        ? await getLanguage()
+        : state.languagePreference;
+    await saveLanguage(state.languagePreference);
+    render();
+    return;
+  }
+  const setting = event.target.dataset.setting;
+  if (setting) {
+    state.settings = await saveSettings({ [setting]: event.target.value });
     render();
   }
 }
@@ -1128,6 +1606,7 @@ async function initialize() {
   await ensureDefaults();
   const [
     settings,
+    languagePreference,
     language,
     custom,
     common,
@@ -1139,6 +1618,7 @@ async function initialize() {
     localState,
   ] = await Promise.all([
     getSettings(),
+    getLanguagePreference(),
     getLanguage(),
     getKeywords("custom"),
     getKeywords("common"),
@@ -1151,11 +1631,11 @@ async function initialize() {
   ]);
 
   state.settings = {
-    maxKeywords: 200,
-    threshold: 20,
+    ...DEFAULT_SETTINGS,
     ...settings,
   };
   state.language = language;
+  state.languagePreference = languagePreference;
   state.activeLibrary = settings.activeLibrary ?? "custom";
   state.libraries = {
     custom,

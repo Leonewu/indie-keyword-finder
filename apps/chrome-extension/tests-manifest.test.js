@@ -13,6 +13,13 @@ test("uses Manifest V3 and a module service worker", () => {
   assert.equal(manifest.background.service_worker, "background.js");
 });
 
+test("allows only packaged JavaScript and local WebAssembly execution", () => {
+  assert.equal(
+    manifest.content_security_policy.extension_pages,
+    "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
+  );
+});
+
 test("limits host access to Google Trends", () => {
   assert.deepEqual(manifest.host_permissions, [
     "https://trends.google.com/*",
@@ -21,6 +28,7 @@ test("limits host access to Google Trends", () => {
 
 test("requests only the permissions used by the public release", () => {
   assert.deepEqual(manifest.permissions, [
+    "offscreen",
     "sidePanel",
     "storage",
     "webRequest",
@@ -39,6 +47,8 @@ test("all manifest entry files exist", async () => {
   const paths = [
     `src/${manifest.background.service_worker}`,
     `src/${manifest.side_panel.default_path}`,
+    "src/offscreen.html",
+    "src/offscreen.js",
     ...manifest.content_scripts.flatMap((entry) => entry.js),
     ...Object.values(manifest.icons),
   ];

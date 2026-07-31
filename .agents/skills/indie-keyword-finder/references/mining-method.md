@@ -10,17 +10,21 @@
 
 ## Signal rule
 
-Each Google Trends comparison contains one reference series followed by up to
-four candidate series. A candidate qualifies when:
+The first Google Trends request contains only the seed. Later requests contain
+that same seed as the reference series followed by up to four candidate series;
+there is no unrelated hidden reference term. A candidate qualifies when:
 
-1. its first two observed values are both zero;
-2. its latest three values are non-decreasing; and
-3. its latest value divided by the reference keyword's latest value, expressed
-   as a percentage, meets the configured threshold.
+1. its latest-three-point average is at least 1.5 times its early-window
+   average;
+2. its latest point has gained at least 10% (and at least two normalized
+   points) from the start of that recent window; and
+3. its latest value, divided by the reference's latest value and expressed as a
+   percentage, meets the configured threshold.
 
-If the latest reference value is zero, a positive candidate value produces an
-infinite ratio and a zero candidate value produces zero. The runner still
-requires the other conditions.
+An explicit reference override can replace the seed anchor. If the latest
+reference value is zero, a positive candidate value produces an infinite ratio
+and a zero candidate value produces zero. The runner still requires the other
+conditions.
 
 The rule is a heuristic for early relative movement. It is not a search-volume
 estimate.
@@ -34,13 +38,15 @@ The deterministic session owns:
 - current batch;
 - related and effective keyword sets;
 - processed count and cap;
-- reference keyword, country, time range, and threshold;
+- reference keyword, country, time range, depth, breadth, and threshold;
 - status and timestamps.
 
-One transition selects at most four candidates because Google Trends accepts at
-most five compared terms and the first term is the reference. One observation
-transition qualifies the current batch, adds new related queries, deduplicates
-the queue, and completes or returns the next batch.
+The initial transition may select up to five roots because the automatic
+reference is one of them. Later transitions select at most four candidates
+because Google Trends accepts five compared terms and the seed occupies the
+first slot. Each related-query payload contributes at most five expansion
+candidates. The default depth of two processes the seed, its children, and its
+grandchildren, but does not enqueue a third generation.
 
 Platform state—browser tabs, cookies, storage, network capture, timers, and
 tool-specific handles—does not belong in the session.
@@ -57,7 +63,7 @@ Pass this object to `scripts/mine.mjs advance`:
     "batchInFlight": true
   },
   "timelineData": [
-    { "value": [10, 0] }
+    { "value": [20, 4] }
   ],
   "relatedPayloads": [
     {
@@ -68,7 +74,8 @@ Pass this object to `scripts/mine.mjs advance`:
         ]
       }
     }
-  ]
+  ],
+  "allowedRelatedKeywords": ["next query"]
 }
 ```
 
@@ -79,6 +86,14 @@ object above only illustrates the fields relevant to an observation.
 response. `relatedPayloads` contains the complete parsed payload for each
 candidate-query `relatedsearches` response. Prefer the rising ranked list; the
 runner falls back to the top list when rising is empty.
+
+`allowedRelatedKeywords` is an optional reviewed subset of the related queries.
+When present, only that subset enters the recursive queue; excluded queries
+remain in the related-query count for transparency. The Chrome Extension
+creates this subset with its packaged on-device embedding model. The Companion
+Skill should provide the subset after explicit semantic review. When the field
+is omitted, the deterministic runner preserves its legacy behavior and queues
+all valid extracted queries.
 
 ## Browser acquisition notes
 
@@ -94,9 +109,10 @@ qualification could not be completed in the current environment.
 
 ## Interpretation limits
 
-Google Trends values are normalized relative interest. The reference keyword
-helps compare magnitudes inside the same request; it does not turn the values
-into absolute search counts. Validate candidates separately for:
+Google Trends values are normalized relative interest. The seed reference—or
+an optional explicit override—helps compare magnitudes inside the same request;
+it does not turn the values into absolute search counts. Validate candidates
+separately for:
 
 - search intent;
 - relevance to the user's product or audience;

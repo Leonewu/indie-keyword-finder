@@ -88,9 +88,20 @@ export const DEFAULT_SETTINGS = Object.freeze({
   timeRange: "Past 30 Days",
   activeLibrary: "custom",
   maxTabs: 1,
-  comparisonKeyword: "weather",
+  comparisonKeyword: "empty",
+  maxDepth: 2,
   maxKeywords: 200,
+  maxRelatedPerKeyword: 5,
+  semanticThreshold: 0.32,
+  signalMode: "balanced",
+  settingsSchemaVersion: 4,
   threshold: 20,
+});
+
+export const SIGNAL_MODES = Object.freeze({
+  emerging: "emerging",
+  balanced: "balanced",
+  demand: "demand",
 });
 
 export function uniqueKeywords(keywords) {
@@ -189,50 +200,130 @@ export function stripGoogleJsonPrefix(text) {
   return JSON.parse(source.slice(brace));
 }
 
-export function detectEffectiveKeywords(
+export function evaluateEffectiveKeywords(
   timelineData,
   candidateKeywords,
   threshold,
+  { hasReference = true, signalMode = SIGNAL_MODES.balanced } = {},
 ) {
-  if (!Array.isArray(timelineData) || timelineData.length < 10) return [];
+  if (!Array.isArray(timelineData) || timelineData.length < 10) {
+    return candidateKeywords.map((keyword) => ({
+      keyword,
+      qualified: false,
+      reason: "insufficient-data",
+    }));
+  }
 
   const values = timelineData.map((point) =>
     Array.isArray(point?.value) ? point.value.map(Number) : [],
   );
-  const baseline = values.map((row) => Number(row[0]) || 0);
-  const baselineLast = baseline.at(-1) ?? 0;
-  const effective = [];
+  const referenceLast = hasReference
+    ? Number(values.at(-1)?.[0]) || 0
+    : null;
+  const evaluations = [];
 
   candidateKeywords.forEach((keyword, candidateIndex) => {
-    const columnIndex = candidateIndex + 1;
+    const columnIndex = candidateIndex + (hasReference ? 1 : 0);
     const series = values.map((row) => Number(row[columnIndex]) || 0);
-    if (series.length !== values.length) return;
-
-    const startsAtZero = series.slice(0, 2).every((value) => value === 0);
-    const recent = series.slice(-3);
-    const nonDecreasing = recent.every(
-      (value, index) => index === 0 || value >= recent[index - 1],
-    );
-    const lastValue = series.at(-1) ?? 0;
-    const ratio = baselineLast === 0
-      ? lastValue > 0
-        ? Number.POSITIVE_INFINITY
-        : 0
-      : (lastValue / baselineLast) * 100;
-
-    if (startsAtZero && nonDecreasing && ratio >= Number(threshold)) {
-      effective.push(keyword);
+    if (series.length !== values.length) {
+      evaluations.push({
+        keyword,
+        qualified: false,
+        reason: "insufficient-data",
+      });
+      return;
     }
+
+    const earlyWindowSize = Math.max(3, Math.ceil(series.length * 0.2));
+    const early = series.slice(0, earlyWindowSize);
+    const recent = series.slice(-3);
+    const average = (items) =>
+      items.reduce((total, value) => total + value, 0) /
+      Math.max(1, items.length);
+    const earlyAverage = average(early);
+    const recentAverage = average(recent);
+    const lastValue = series.at(-1) ?? 0;
+    const growthRatio = recentAverage / Math.max(earlyAverage, 1);
+    const recentGain = lastValue - (recent[0] ?? 0);
+    const materiallyGrowing =
+      growthRatio >= 1.5 &&
+      recentGain >= Math.max(2, (recent[0] ?? 0) * 0.1);
+    const score = hasReference
+      ? referenceLast === 0
+        ? lastValue > 0
+          ? Number.POSITIVE_INFINITY
+          : 0
+        : (lastValue / referenceLast) * 100
+      : lastValue;
+
+    const signalMet = score >= Number(threshold);
+    const normalizedMode = Object.values(SIGNAL_MODES).includes(signalMode)
+      ? signalMode
+      : SIGNAL_MODES.balanced;
+    const qualified =
+      normalizedMode === SIGNAL_MODES.demand
+        ? signalMet
+        : normalizedMode === SIGNAL_MODES.balanced
+          ? signalMet &&
+            (materiallyGrowing || score >= Math.max(100, Number(threshold) * 2))
+          : materiallyGrowing && signalMet;
+    evaluations.push({
+      keyword,
+      earlyAverage,
+      recentAverage,
+      lastValue,
+      growthRatio,
+      recentGain,
+      referenceLast,
+      score,
+      materiallyGrowing,
+      signalMet,
+      signalMode: normalizedMode,
+      qualified,
+      reason: qualified
+        ? "qualified"
+        : !signalMet
+          ? "below-signal-threshold"
+          : !materiallyGrowing
+            ? "insufficient-recent-growth"
+            : "not-qualified",
+    });
   });
 
-  return effective;
+  return evaluations;
 }
 
-export function extractRelatedKeywords(payloads, excludedKeywords = []) {
+export function detectEffectiveKeywords(
+  timelineData,
+  candidateKeywords,
+  threshold,
+  options = {},
+) {
+  return evaluateEffectiveKeywords(
+    timelineData,
+    candidateKeywords,
+    threshold,
+    options,
+  )
+    .filter((evaluation) => evaluation.qualified)
+    .map((evaluation) => evaluation.keyword);
+}
+
+export function extractRelatedKeywords(
+  payloads,
+  excludedKeywords = [],
+  { limitPerPayload = Number.POSITIVE_INFINITY } = {},
+) {
   const excluded = new Set(
     excludedKeywords.map((keyword) => String(keyword).toLocaleLowerCase()),
   );
   const result = [];
+  const limit = boundedNumber(
+    limitPerPayload,
+    Number.POSITIVE_INFINITY,
+    1,
+    100,
+  );
 
   for (const payload of payloads) {
     const rankedLists = payload?.default?.rankedList;
@@ -240,13 +331,16 @@ export function extractRelatedKeywords(payloads, excludedKeywords = []) {
     const rising = rankedLists[1]?.rankedKeyword ?? [];
     const top = rankedLists[0]?.rankedKeyword ?? [];
     const selected = rising.length > 0 ? rising : top;
+    let added = 0;
 
     for (const item of selected) {
+      if (added >= limit) break;
       const keyword = String(item?.query ?? "").trim();
       const key = keyword.toLocaleLowerCase();
       if (!validateKeyword(keyword) || excluded.has(key)) continue;
       excluded.add(key);
       result.push(keyword);
+      added += 1;
     }
   }
 
@@ -273,39 +367,76 @@ function sessionTimestamp(now) {
 export function createMiningSession(
   {
     keywords,
-    comparisonKeyword,
+    comparisonKeyword = DEFAULT_SETTINGS.comparisonKeyword,
     timeRange = "Past 7 Days",
     country = DEFAULT_SETTINGS.country,
+    maxDepth = DEFAULT_SETTINGS.maxDepth,
     maxKeywords = DEFAULT_SETTINGS.maxKeywords,
+    maxRelatedPerKeyword = DEFAULT_SETTINGS.maxRelatedPerKeyword,
+    semanticMode = "off",
+    semanticThreshold = DEFAULT_SETTINGS.semanticThreshold,
     threshold = DEFAULT_SETTINGS.threshold,
+    signalMode = DEFAULT_SETTINGS.signalMode,
   },
   now = Date.now(),
 ) {
   const rootKeywords = uniqueKeywords(keywords ?? []);
-  const comparison = String(comparisonKeyword ?? "").trim();
+  const comparison = comparisonTerms(comparisonKeyword).at(0) ?? "empty";
 
   if (rootKeywords.length === 0) {
     throw new Error("Add at least one seed keyword before starting.");
   }
-  if (!comparison || comparison === "empty") {
-    throw new Error("Mining requires a comparison keyword.");
-  }
 
   const timestamp = sessionTimestamp(now);
+  const referenceKeyword =
+    comparisonTerms(comparison).at(0) ?? rootKeywords[0];
+  const keywordDepths = Object.fromEntries(
+    rootKeywords.map((keyword) => [keyword.toLocaleLowerCase(), 0]),
+  );
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     status: "running",
     rootKeywords,
     queue: [...rootKeywords],
+    keywordDepths,
     relatedKeywords: [],
     effectiveKeywords: [],
+    semanticRelevantKeywords: [],
+    semanticRejectedKeywords: [],
+    semanticScores: {},
+    semanticDiagnostics: {},
+    qualificationDiagnostics: {},
+    batchesProcessed: 0,
+    deepestProcessed: 0,
     processed: 0,
+    maxDepth: boundedNumber(maxDepth, 2, 0, 5),
     maxKeywords: boundedNumber(maxKeywords, 200, 1, 2_000),
+    maxRelatedPerKeyword: boundedNumber(
+      maxRelatedPerKeyword,
+      5,
+      1,
+      25,
+    ),
+    semanticMode: semanticMode === "local" ? "local" : "off",
+    semanticStatus: semanticMode === "local" ? "waiting" : "off",
+    semanticThreshold: boundedNumber(
+      semanticThreshold,
+      DEFAULT_SETTINGS.semanticThreshold,
+      0,
+      1,
+    ),
+    semanticError: null,
     threshold: boundedNumber(threshold, 20, 1, 10_000),
+    signalMode: Object.values(SIGNAL_MODES).includes(signalMode)
+      ? signalMode
+      : DEFAULT_SETTINGS.signalMode,
     timeRange: DATE_OPTIONS[timeRange] === undefined ? "Past 7 Days" : timeRange,
     country: GEO_OPTIONS[country] === undefined ? "Global" : country,
     comparisonKeyword: comparison,
+    referenceKeyword,
+    referenceMode: comparison === "empty" ? "seed" : "custom",
     currentBatch: [],
+    currentDepth: null,
     batchInFlight: false,
     startedAt: timestamp,
     updatedAt: timestamp,
@@ -316,18 +447,44 @@ export function createMiningSession(
 export function publicMiningSession(session, now = Date.now()) {
   if (!session) return null;
   return {
-    schemaVersion: session.schemaVersion ?? 1,
+    schemaVersion: session.schemaVersion ?? 3,
     status: session.status,
     rootKeywords: [...(session.rootKeywords ?? [])],
     relatedKeywords: [...(session.relatedKeywords ?? [])],
     effectiveKeywords: [...(session.effectiveKeywords ?? [])],
+    semanticRelevant:
+      session.semanticRelevantKeywords?.length ?? 0,
+    semanticRejected:
+      session.semanticRejectedKeywords?.length ?? 0,
+    semanticScores: { ...(session.semanticScores ?? {}) },
+    semanticDiagnostics: { ...(session.semanticDiagnostics ?? {}) },
+    qualificationDiagnostics: {
+      ...(session.qualificationDiagnostics ?? {}),
+    },
+    semanticMode: session.semanticMode ?? "off",
+    semanticStatus: session.semanticStatus ?? "off",
+    semanticThreshold:
+      Number(session.semanticThreshold) ||
+      DEFAULT_SETTINGS.semanticThreshold,
+    semanticError: session.semanticError ?? null,
+    batchesProcessed: Number(session.batchesProcessed) || 0,
+    deepestProcessed: Number(session.deepestProcessed) || 0,
     processed: Number(session.processed) || 0,
+    maxDepth: Number(session.maxDepth) || 0,
     maxKeywords: Number(session.maxKeywords) || 0,
     threshold: Number(session.threshold) || 0,
+    signalMode: session.signalMode ?? DEFAULT_SETTINGS.signalMode,
     timeRange: session.timeRange,
     country: session.country,
     comparisonKeyword: session.comparisonKeyword,
+    referenceKeyword: session.referenceKeyword,
+    referenceMode: session.referenceMode,
     currentBatch: [...(session.currentBatch ?? [])],
+    currentDepth:
+      session.currentDepth != null &&
+      Number.isFinite(Number(session.currentDepth))
+        ? Number(session.currentDepth)
+        : null,
     queued: Array.isArray(session.queue) ? session.queue.length : 0,
     startedAt: session.startedAt,
     updatedAt: sessionTimestamp(now),
@@ -356,12 +513,30 @@ export function selectNextMiningBatch(session, now = Date.now()) {
     };
   }
 
-  const batch = queue.splice(0, Math.min(4, capacity, queue.length));
+  const firstKeyword = queue[0];
+  const firstDepth =
+    Number(session.keywordDepths?.[firstKeyword.toLocaleLowerCase()]) || 0;
+  const automaticReferenceIsInBatch =
+    session.referenceMode === "seed" &&
+    firstDepth === 0;
+  const perBatch = automaticReferenceIsInBatch ? 5 : 4;
+  const batch = [];
+  while (
+    batch.length < Math.min(perBatch, capacity) &&
+    queue.length > 0
+  ) {
+    const keyword = queue[0];
+    const depth =
+      Number(session.keywordDepths?.[keyword.toLocaleLowerCase()]) || 0;
+    if (depth !== firstDepth) break;
+    batch.push(queue.shift());
+  }
   return {
     session: {
       ...session,
       queue,
       currentBatch: batch,
+      currentDepth: firstDepth,
       batchInFlight: true,
       updatedAt: sessionTimestamp(now),
       lastError: null,
@@ -373,7 +548,14 @@ export function selectNextMiningBatch(session, now = Date.now()) {
 
 export function applyMiningObservation(
   session,
-  { timelineData, relatedPayloads = [] },
+  {
+    timelineData,
+    relatedPayloads = [],
+    allowedRelatedKeywords,
+    semanticScores = {},
+    semanticReasons = {},
+    semanticAnchors = {},
+  },
   now = Date.now(),
 ) {
   if (!session?.batchInFlight || session.currentBatch.length === 0) {
@@ -383,24 +565,107 @@ export function applyMiningObservation(
     throw new Error("The Mining observation has no timeline data.");
   }
 
-  const effective = detectEffectiveKeywords(
+  const referenceOverlapsBatch = session.currentBatch.some(
+    (keyword) =>
+      keyword.toLocaleLowerCase() ===
+      String(session.referenceKeyword).toLocaleLowerCase(),
+  );
+  const evaluations = evaluateEffectiveKeywords(
     timelineData,
     session.currentBatch,
     session.threshold,
+    {
+      hasReference:
+        Boolean(session.referenceKeyword) &&
+        !referenceOverlapsBatch,
+      signalMode: session.signalMode,
+    },
+  );
+  const detectedEffective = evaluations
+    .filter((evaluation) => evaluation.qualified)
+    .map((evaluation) => evaluation.keyword);
+  const rootSet = new Set(
+    session.rootKeywords.map((keyword) => keyword.toLocaleLowerCase()),
+  );
+  const effective = detectedEffective.filter(
+    (keyword) => !rootSet.has(keyword.toLocaleLowerCase()),
   );
   const effectiveKeywords = uniqueKeywords([
     ...session.effectiveKeywords,
     ...effective,
   ]);
   const related = extractRelatedKeywords(relatedPayloads, [
-    session.comparisonKeyword,
+    session.referenceKeyword,
     ...session.rootKeywords,
     ...session.relatedKeywords,
-  ]);
+  ], {
+    limitPerPayload: session.maxRelatedPerKeyword,
+  });
   const relatedKeywords = uniqueKeywords([
     ...session.relatedKeywords,
     ...related,
   ]);
+  const allowedRelatedSet = Array.isArray(allowedRelatedKeywords)
+    ? new Set(
+        allowedRelatedKeywords.map((keyword) =>
+          String(keyword).toLocaleLowerCase(),
+        ),
+      )
+    : null;
+  const relevantRelated = allowedRelatedSet
+    ? related.filter((keyword) =>
+        allowedRelatedSet.has(keyword.toLocaleLowerCase()),
+      )
+    : related;
+  const rejectedRelated = allowedRelatedSet
+    ? related.filter(
+        (keyword) =>
+          !allowedRelatedSet.has(keyword.toLocaleLowerCase()),
+      )
+    : [];
+  const semanticRelevantKeywords = uniqueKeywords([
+    ...(session.semanticRelevantKeywords ?? []),
+    ...relevantRelated,
+  ]);
+  const semanticRejectedKeywords = uniqueKeywords([
+    ...(session.semanticRejectedKeywords ?? []),
+    ...rejectedRelated,
+  ]);
+
+  const semanticDiagnostics = {
+    ...(session.semanticDiagnostics ?? {}),
+  };
+  for (const keyword of related) {
+    const key = keyword.toLocaleLowerCase();
+    semanticDiagnostics[key] = {
+      keyword,
+      score: Number.isFinite(Number(semanticScores[key]))
+        ? Number(semanticScores[key])
+        : null,
+      anchor: Boolean(semanticAnchors[key]),
+      status: relevantRelated.some(
+        (item) => item.toLocaleLowerCase() === key,
+      )
+        ? "accepted"
+        : "rejected",
+      reason:
+        semanticReasons[key] ??
+        (relevantRelated.some(
+          (item) => item.toLocaleLowerCase() === key,
+        )
+          ? "accepted"
+          : "rejected"),
+    };
+  }
+
+  const qualificationDiagnostics = {
+    ...(session.qualificationDiagnostics ?? {}),
+  };
+  for (const evaluation of evaluations) {
+    qualificationDiagnostics[evaluation.keyword.toLocaleLowerCase()] = {
+      ...evaluation,
+    };
+  }
 
   const queued = new Set(
     [
@@ -410,11 +675,16 @@ export function applyMiningObservation(
     ].map((keyword) => keyword.toLocaleLowerCase()),
   );
   const queue = [...session.queue];
-  for (const keyword of related) {
+  const keywordDepths = { ...(session.keywordDepths ?? {}) };
+  const currentDepth = Number(session.currentDepth) || 0;
+  const nextDepth = currentDepth + 1;
+  const canExpand = currentDepth < session.maxDepth;
+  for (const keyword of relevantRelated) {
     const key = keyword.toLocaleLowerCase();
     if (queued.has(key)) continue;
     queued.add(key);
-    queue.push(keyword);
+    keywordDepths[key] = nextDepth;
+    if (canExpand) queue.push(keyword);
   }
 
   const processed = session.processed + session.currentBatch.length;
@@ -424,16 +694,34 @@ export function applyMiningObservation(
       ...session,
       status: complete ? "complete" : session.status,
       queue,
+      keywordDepths,
       relatedKeywords,
       effectiveKeywords,
+      semanticRelevantKeywords,
+      semanticRejectedKeywords,
+      semanticScores: {
+        ...(session.semanticScores ?? {}),
+        ...semanticScores,
+      },
+      semanticDiagnostics,
+      qualificationDiagnostics,
+      batchesProcessed: (Number(session.batchesProcessed) || 0) + 1,
+      deepestProcessed: Math.max(
+        Number(session.deepestProcessed) || 0,
+        currentDepth,
+      ),
       processed,
       currentBatch: [],
+      currentDepth: null,
       batchInFlight: false,
       updatedAt: sessionTimestamp(now),
       lastError: null,
     },
     addedRelated: related,
+    addedRelevant: relevantRelated,
+    rejectedSemantic: rejectedRelated,
     addedEffective: effective,
+    qualificationDiagnostics: evaluations,
     complete,
   };
 }
@@ -464,15 +752,80 @@ export function failMiningSession(session, error, now = Date.now()) {
 
 export function restoreMiningSession(saved, now = Date.now()) {
   if (!saved || !["running", "paused"].includes(saved.status)) return null;
+  const rootKeywords = uniqueKeywords(saved.rootKeywords ?? []);
+  const comparison =
+    comparisonTerms(saved.comparisonKeyword).at(0) ?? "empty";
+  const referenceKeyword =
+    saved.referenceKeyword ??
+    comparisonTerms(comparison).at(0) ??
+    rootKeywords[0];
+  const restoredQueue = uniqueKeywords([
+    ...(saved.currentBatch ?? []),
+    ...(saved.queue ?? []),
+  ]);
+  const keywordDepths = { ...(saved.keywordDepths ?? {}) };
+  for (const keyword of rootKeywords) {
+    keywordDepths[keyword.toLocaleLowerCase()] = 0;
+  }
+  for (const keyword of restoredQueue) {
+    const key = keyword.toLocaleLowerCase();
+    if (!Number.isFinite(Number(keywordDepths[key]))) {
+      keywordDepths[key] = rootKeywords.some(
+        (root) => root.toLocaleLowerCase() === key,
+      )
+        ? 0
+        : 1;
+    }
+  }
   return {
     ...saved,
-    schemaVersion: 1,
+    schemaVersion: 3,
     status: "paused",
-    queue: uniqueKeywords([
-      ...(saved.currentBatch ?? []),
-      ...(saved.queue ?? []),
-    ]),
+    rootKeywords,
+    queue: restoredQueue,
+    keywordDepths,
+    batchesProcessed: Number(saved.batchesProcessed) || 0,
+    deepestProcessed: Number(saved.deepestProcessed) || 0,
+    maxDepth: boundedNumber(saved.maxDepth, 2, 0, 5),
+    maxRelatedPerKeyword: boundedNumber(
+      saved.maxRelatedPerKeyword,
+      5,
+      1,
+      25,
+    ),
+    semanticRelevantKeywords: uniqueKeywords(
+      saved.semanticRelevantKeywords ?? [],
+    ),
+    semanticRejectedKeywords: uniqueKeywords(
+      saved.semanticRejectedKeywords ?? [],
+    ),
+    semanticScores: { ...(saved.semanticScores ?? {}) },
+    semanticDiagnostics: { ...(saved.semanticDiagnostics ?? {}) },
+    qualificationDiagnostics: {
+      ...(saved.qualificationDiagnostics ?? {}),
+    },
+    semanticMode: saved.semanticMode === "local" ? "local" : "off",
+    semanticStatus:
+      saved.semanticMode === "local"
+        ? "waiting"
+        : "off",
+    semanticThreshold: boundedNumber(
+      saved.semanticThreshold,
+      DEFAULT_SETTINGS.semanticThreshold,
+      0,
+      1,
+    ),
+    semanticError: null,
+    signalMode: Object.values(SIGNAL_MODES).includes(saved.signalMode)
+      ? saved.signalMode
+      : DEFAULT_SETTINGS.signalMode,
+    comparisonKeyword: comparison,
+    referenceKeyword,
+    referenceMode:
+      saved.referenceMode ??
+      (comparison === "empty" ? "seed" : "custom"),
     currentBatch: [],
+    currentDepth: null,
     batchInFlight: false,
     updatedAt: sessionTimestamp(now),
   };

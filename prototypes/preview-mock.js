@@ -18,7 +18,7 @@
     rootsKeywords: ["Generator", "Converter", "Analyzer", "Tracker", "Builder"],
     autoRootKeywords: ["ai agents"],
     analysisState: {
-      schemaVersion: 1,
+      schemaVersion: 3,
       status: "complete",
       rootKeywords: ["ai agents"],
       relatedKeywords: [
@@ -33,12 +33,28 @@
         "local ai assistant",
         "agent memory patterns",
       ],
+      semanticMode: "local",
+      semanticStatus: "ready",
+      semanticThreshold: 0.32,
+      semanticRelevant: 4,
+      semanticRejected: 9,
+      semanticScores: {
+        "ai agent workflow": 0.82,
+        "browser automation ai": 0.71,
+        "local ai assistant": 0.69,
+        "agent memory patterns": 0.76,
+      },
+      batchesProcessed: 7,
+      deepestProcessed: 2,
       processed: 34,
+      maxDepth: 2,
       maxKeywords: 200,
       threshold: 20,
       timeRange: "Past 30 Days",
       country: "United States",
-      comparisonKeyword: "weather",
+      comparisonKeyword: "empty",
+      referenceKeyword: "ai agents",
+      referenceMode: "seed",
       currentBatch: [],
       queued: 12,
       startedAt: Date.now() - 42_000,
@@ -46,15 +62,34 @@
     },
     settings: {
       activeLibrary: "custom",
-      comparisonKeyword: "weather",
+      comparisonKeyword: "empty",
       country: "United States",
+      maxDepth: 2,
       maxKeywords: 20,
+      maxRelatedPerKeyword: 5,
+      semanticThreshold: 0.32,
       maxTabs: 2,
       threshold: 20,
       timeRange: "Past 30 Days",
     },
+    semanticEngineState: {
+      id: "Xenova/all-MiniLM-L6-v2",
+      name: "all-MiniLM-L6-v2",
+      revision: "751bff37182d3f1213fa05d7196b954e230abad9",
+      modelFile: "model_quantized.onnx",
+      quantization: "Q8",
+      dimensions: 384,
+      runtime: "Transformers.js 3.7.6",
+      executionProvider: "WASM",
+      status: "ready",
+      loaded: true,
+      cacheEntries: 37,
+      initializationMs: 842,
+      error: null,
+    },
   };
   const messageListeners = new Set();
+  globalThis.__previewMessages = [];
 
   const local = {
     async get(keys) {
@@ -99,6 +134,7 @@
             },
           },
           postMessage(message) {
+            globalThis.__previewMessages.push(structuredClone(message));
             if (message.type === "GET_ANALYSIS_STATUS") {
               queueMicrotask(() => {
                 for (const listener of portListeners) {
@@ -108,6 +144,14 @@
                   });
                 }
               });
+              setTimeout(() => {
+                for (const listener of portListeners) {
+                  listener({
+                    type: "SEMANTIC_ENGINE_STATUS",
+                    semanticEngine: data.semanticEngineState,
+                  });
+                }
+              }, 120);
             }
             if (message.type === "PING") {
               queueMicrotask(() => {

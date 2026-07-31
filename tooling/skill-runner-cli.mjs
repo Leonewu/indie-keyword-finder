@@ -7,11 +7,14 @@ switch (command) {
     const seeds = options.seed.flatMap((value) => normalizeKeywordInput(value));
     const session = createMiningSession({
       keywords: seeds,
-      comparisonKeyword: options.comparison.at(-1) ?? "weather",
+      comparisonKeyword: options.comparison.at(-1) ?? "empty",
       country: options.country.at(-1) ?? "Global",
+      maxDepth: options.depth.at(-1) ?? 2,
       timeRange: options.time.at(-1) ?? "Past 30 Days",
       maxKeywords: options.max.at(-1) ?? 200,
+      maxRelatedPerKeyword: options.breadth.at(-1) ?? 5,
       threshold: options.threshold.at(-1) ?? 20,
+      signalMode: options.mode.at(-1) ?? "balanced",
     });
     print(advanceSession(session));
     break;
@@ -21,10 +24,16 @@ switch (command) {
     const observed = applyMiningObservation(input.session, {
       timelineData: input.timelineData,
       relatedPayloads: input.relatedPayloads ?? [],
+      allowedRelatedKeywords: input.allowedRelatedKeywords,
+      semanticScores: input.semanticScores ?? {},
+      semanticReasons: input.semanticReasons ?? {},
+      semanticAnchors: input.semanticAnchors ?? {},
     });
     print({
       ...advanceSession(observed.session),
       addedRelated: observed.addedRelated,
+      addedRelevant: observed.addedRelevant,
+      rejectedSemantic: observed.rejectedSemantic,
       addedEffective: observed.addedEffective,
     });
     break;
@@ -38,10 +47,12 @@ switch (command) {
   case "explain":
     print({
       signal:
-        "The first two candidate points are zero, the latest three do not decrease, and the latest candidate/reference ratio meets the threshold.",
+        "Balanced mode requires the relative signal threshold plus either material recent growth or a strong current signal; Emerging mode prioritizes growth, while Demand mode prioritizes current strength.",
       caveat:
         "This is a relative Google Trends signal, not search volume, ranking difficulty, traffic, or a guaranteed opportunity.",
-      batchLimit: 4,
+      defaultDepth: 2,
+      expansionPerKeyword: 5,
+      laterBatchLimit: 4,
     });
     break;
   default:
@@ -49,8 +60,9 @@ switch (command) {
       [
         "Indie Keyword Finder Mining runner",
         "",
-        "create  --seed <keyword> [--comparison weather] [--country Global]",
-        "        [--time \"Past 30 Days\"] [--max 200] [--threshold 20]",
+        "create  --seed <keyword> [--comparison <optional-reference>] [--country Global]",
+        "        [--time \"Past 30 Days\"] [--depth 2] [--breadth 5]",
+        "        [--max 200] [--threshold 20] [--mode emerging|balanced|demand]",
         "advance --input <observation.json>  # omit --input to read stdin",
         "restore --input <session.json>      # omit --input to read stdin",
         "explain",
@@ -76,7 +88,10 @@ function advanceSession(session) {
     nextUrl:
       selected.batch.length > 0
         ? buildTrendsUrl(
-            [selected.session.comparisonKeyword, ...selected.batch],
+            [
+              selected.session.referenceKeyword,
+              ...selected.batch,
+            ],
             selected.session,
           )
         : null,
@@ -85,10 +100,13 @@ function advanceSession(session) {
 
 function parseOptions(args) {
   const result = {
+    breadth: [],
     comparison: [],
     country: [],
+    depth: [],
     input: [],
     max: [],
+    mode: [],
     seed: [],
     threshold: [],
     time: [],
